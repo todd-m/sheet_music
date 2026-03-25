@@ -35,14 +35,16 @@ from parsers.csv_parser import parse_csv_index
 CATALOG_PATH = Path(__file__).resolve().parent.parent / "catalog.json"
 
 
-def load_catalog(path: Path = CATALOG_PATH) -> dict:
+def load_catalog(path: Path | None = None) -> dict:
+    path = path or CATALOG_PATH
     if path.exists():
         with open(path) as f:
             return json.load(f)
     return {"volumes": {}, "songs": []}
 
 
-def save_catalog(catalog: dict, path: Path = CATALOG_PATH) -> None:
+def save_catalog(catalog: dict, path: Path | None = None) -> None:
+    path = path or CATALOG_PATH
     with open(path, "w") as f:
         json.dump(catalog, f, indent=2, ensure_ascii=False)
     print(f"Catalog saved to {path} ({len(catalog['songs'])} songs, {len(catalog['volumes'])} volumes)")
