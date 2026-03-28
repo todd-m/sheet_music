@@ -174,7 +174,19 @@ def cmd_add_volume(args):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Ingest song indexes into the sheet music catalog."
+        description="Ingest song indexes into the sheet music catalog.",
+        epilog=(
+            "examples:\n"
+            "  python ingest.py pdf --file master-index.pdf --source \"master-index\"\n"
+            "  python ingest.py csv --file extra-songs.csv --source \"manual-csv\"\n"
+            "  python ingest.py remove --source \"master-index\"\n"
+            "  python ingest.py sources\n"
+            "  python ingest.py add-volume --id Realbk1 --name \"The Real Book Vol 1\" \\\n"
+            "      --drive-id \"1aBcDeFg...\" --offset 5\n"
+            "\n"
+            "use '<command> -h' for more details on each subcommand."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
