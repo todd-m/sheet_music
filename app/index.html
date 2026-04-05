@@ -309,7 +309,9 @@
     // Load PDF if different from current
     if (!currentPdf || currentPdf.driveFileId !== driveFileId) {
       try {
-        const loadingTask = pdfjsLib.getDocument(`/api/pdf/${driveFileId}`);
+        let pdfUrl = `/api/pdf/${driveFileId}`;
+        if (vol.resourceKey) pdfUrl += `?resourcekey=${encodeURIComponent(vol.resourceKey)}`;
+        const loadingTask = pdfjsLib.getDocument(pdfUrl);
         const doc = await loadingTask.promise;
         currentPdf = { doc, driveFileId };
       } catch (e) {
