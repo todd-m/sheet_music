@@ -22,6 +22,7 @@ Usage:
 
 import argparse
 import json
+import re
 import sys
 from datetime import date
 from pathlib import Path
@@ -160,15 +161,39 @@ def cmd_sources(args):
         print(f"{src:<30s} {count:>6d}")
 
 
+def parse_drive_url(url):
+    """Extract driveFileId and optional resourceKey from a Google Drive share link."""
+    file_id_match = re.search(r'/d/([A-Za-z0-9_-]+)', url)
+    if not file_id_match:
+        raise ValueError(f"Could not extract a file ID from: {url}")
+    file_id = file_id_match.group(1)
+    rk_match = re.search(r'resourcekey=([A-Za-z0-9_-]+)', url)
+    resource_key = rk_match.group(1) if rk_match else None
+    return file_id, resource_key
+
+
 def cmd_add_volume(args):
-    catalog = load_catalog()
-    catalog["volumes"][args.id] = {
+    drive_file_id = ""
+    resource_key = None
+    if args.url:
+        drive_file_id, resource_key = parse_drive_url(args.url)
+
+    volume = {
         "name": args.name or args.id,
-        "driveFileId": args.drive_id or "",
+        "driveFileId": drive_file_id,
         "pageOffset": args.offset,
         "notes": args.notes or "",
     }
+    if resource_key:
+        volume["resourceKey"] = resource_key
+
+    catalog = load_catalog()
+    catalog["volumes"][args.id] = volume
     print(f"Volume '{args.id}' saved.")
+    if drive_file_id:
+        print(f"  driveFileId:  {drive_file_id}")
+    if resource_key:
+        print(f"  resourceKey:  {resource_key}")
     save_catalog(catalog)
 
 
@@ -182,7 +207,7 @@ def main():
             "  python ingest.py remove --source \"master-index\"\n"
             "  python ingest.py sources\n"
             "  python ingest.py add-volume --id Realbk1 --name \"The Real Book Vol 1\" \\\n"
-            "      --drive-id \"1aBcDeFg...\" --offset 5\n"
+            "      --url \"https://drive.google.com/file/d/1aBcDeFg.../view?...\" --offset 5\n"
             "\n"
             "use '<command> -h' for more details on each subcommand."
         ),
@@ -224,7 +249,7 @@ def main():
     p_vol = sub.add_parser("add-volume", help="Add or update a volume")
     p_vol.add_argument("--id", required=True, help="Volume ID slug")
     p_vol.add_argument("--name", help="Display name")
-    p_vol.add_argument("--drive-id", help="Google Drive file ID")
+    p_vol.add_argument("--url", help="Google Drive share link (extracts file ID and resource key)")
     p_vol.add_argument("--offset", type=int, default=0, help="PDF page offset")
     p_vol.add_argument("--notes", help="Freeform notes")
     p_vol.set_defaults(func=cmd_add_volume)

@@ -15,7 +15,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "ingestion"))
 
-from ingest import load_catalog, save_catalog, cmd_remove, cmd_sources, cmd_add_volume, cmd_csv, cmd_pdf
+from ingest import load_catalog, save_catalog, cmd_remove, cmd_sources, cmd_add_volume, cmd_csv, cmd_pdf, parse_drive_url
 
 
 def _mock_catalog_io(catalog_data: dict):
@@ -106,9 +106,28 @@ class TestCmdSources:
 
 # ── cmd_add_volume ──
 
+class TestParseDriveUrl:
+    def test_extracts_file_id_and_resource_key(self):
+        url = "https://drive.google.com/file/d/0B_vQixE4WYYVeGZCM3lKYkxYRlU/view?usp=drive_link&resourcekey=0-3Yy8GUWRChar3Gl1-Cnbag"
+        file_id, rk = parse_drive_url(url)
+        assert file_id == "0B_vQixE4WYYVeGZCM3lKYkxYRlU"
+        assert rk == "0-3Yy8GUWRChar3Gl1-Cnbag"
+
+    def test_extracts_file_id_without_resource_key(self):
+        url = "https://drive.google.com/file/d/1aBcDeFgHiJkLmNoP/view?usp=sharing"
+        file_id, rk = parse_drive_url(url)
+        assert file_id == "1aBcDeFgHiJkLmNoP"
+        assert rk is None
+
+    def test_raises_on_invalid_url(self):
+        with pytest.raises(ValueError):
+            parse_drive_url("https://example.com/not-a-drive-link")
+
+
 class TestCmdAddVolume:
-    def test_add_new_volume(self, empty_catalog):
-        args = Namespace(id="JazzFake", name="Jazz Fakebook", drive_id="xyz789", offset=3, notes="test")
+    def test_add_new_volume_with_url(self, empty_catalog):
+        url = "https://drive.google.com/file/d/xyz789/view?usp=sharing"
+        args = Namespace(id="JazzFake", name="Jazz Fakebook", url=url, offset=3, notes="test")
         with _mock_catalog_io(empty_catalog):
             cmd_add_volume(args)
         assert "JazzFake" in empty_catalog["volumes"]
@@ -118,15 +137,25 @@ class TestCmdAddVolume:
         assert vol["pageOffset"] == 3
         assert vol["notes"] == "test"
 
+    def test_url_with_resource_key(self, empty_catalog):
+        url = "https://drive.google.com/file/d/abc123/view?resourcekey=rk-456"
+        args = Namespace(id="Vol1", name=None, url=url, offset=0, notes=None)
+        with _mock_catalog_io(empty_catalog):
+            cmd_add_volume(args)
+        vol = empty_catalog["volumes"]["Vol1"]
+        assert vol["driveFileId"] == "abc123"
+        assert vol["resourceKey"] == "rk-456"
+
     def test_update_existing_volume(self, sample_catalog):
-        args = Namespace(id="Realbk1", name="Updated Name", drive_id="new_id", offset=10, notes="updated")
+        url = "https://drive.google.com/file/d/new_id/view"
+        args = Namespace(id="Realbk1", name="Updated Name", url=url, offset=10, notes="updated")
         with _mock_catalog_io(sample_catalog):
             cmd_add_volume(args)
         assert sample_catalog["volumes"]["Realbk1"]["name"] == "Updated Name"
         assert sample_catalog["volumes"]["Realbk1"]["pageOffset"] == 10
 
     def test_defaults_name_to_id(self, empty_catalog):
-        args = Namespace(id="Vol1", name=None, drive_id=None, offset=0, notes=None)
+        args = Namespace(id="Vol1", name=None, url=None, offset=0, notes=None)
         with _mock_catalog_io(empty_catalog):
             cmd_add_volume(args)
         assert empty_catalog["volumes"]["Vol1"]["name"] == "Vol1"
