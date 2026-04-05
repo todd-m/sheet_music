@@ -1,5 +1,5 @@
 PYTHON  ?= python3
-VENV    := .venv
+VENV    := env
 BIN     := $(VENV)/bin
 PORT    ?= 8000
 
