@@ -28,15 +28,18 @@ async def get_catalog():
 
 
 @app.get("/api/pdf/{drive_file_id}")
-async def proxy_pdf(drive_file_id: str):
+async def proxy_pdf(drive_file_id: str, resourcekey: str | None = None):
     """
     Proxy a PDF from Google Drive to avoid CORS issues.
     Expects the file to be shared (anyone with link can view).
     """
     url = f"https://drive.google.com/uc?id={drive_file_id}&export=download"
+    headers = {}
+    if resourcekey:
+        headers["X-Goog-Drive-Resource-Keys"] = f"{drive_file_id}/{resourcekey}"
 
     async with httpx.AsyncClient(follow_redirects=True, timeout=60.0) as client:
-        resp = await client.get(url)
+        resp = await client.get(url, headers=headers)
 
     if resp.status_code != 200:
         raise HTTPException(502, f"Failed to fetch PDF from Drive (status {resp.status_code})")
@@ -50,7 +53,7 @@ async def proxy_pdf(drive_file_id: str):
         if match:
             confirm_url = f"{url}&confirm={match.group(1)}"
             async with httpx.AsyncClient(follow_redirects=True, timeout=60.0) as client:
-                resp = await client.get(confirm_url)
+                resp = await client.get(confirm_url, headers=headers)
             if resp.status_code != 200:
                 raise HTTPException(502, "Failed to fetch PDF after confirmation")
         else:
