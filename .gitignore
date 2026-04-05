@@ -22,5 +22,8 @@ env/
 credentials.json
 token.json
 
+# actual catalog and file ids
+catalog.json
+
 # Large files — keep PDFs out of the repo
 *.pdf

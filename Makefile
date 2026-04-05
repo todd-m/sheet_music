@@ -1,7 +1,7 @@
 PYTHON  ?= python3
 VENV    := env
 BIN     := $(VENV)/bin
-PORT    ?= 8000
+PORT    ?= 7001
 
 .PHONY: help venv install install-ingestion test lint serve clean
 
