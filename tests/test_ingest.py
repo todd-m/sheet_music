@@ -119,6 +119,12 @@ class TestParseDriveUrl:
         assert file_id == "1aBcDeFgHiJkLmNoP"
         assert rk is None
 
+    def test_handles_shell_escaped_url(self):
+        url = r"https://drive.google.com/file/d/0B_vQixE4WYYVUnJHVXBJYzBvMGs/view\?usp\=sharing\&resourcekey\=0-ssHW3hGMdIE0WlqtXTzH4w"
+        file_id, rk = parse_drive_url(url)
+        assert file_id == "0B_vQixE4WYYVUnJHVXBJYzBvMGs"
+        assert rk == "0-ssHW3hGMdIE0WlqtXTzH4w"
+
     def test_raises_on_invalid_url(self):
         with pytest.raises(ValueError):
             parse_drive_url("https://example.com/not-a-drive-link")

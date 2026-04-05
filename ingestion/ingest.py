@@ -163,6 +163,8 @@ def cmd_sources(args):
 
 def parse_drive_url(url):
     """Extract driveFileId and optional resourceKey from a Google Drive share link."""
+    # Strip shell-escape backslashes (e.g. \? \= \&) that may be passed through.
+    url = url.replace("\\", "")
     file_id_match = re.search(r'/d/([A-Za-z0-9_-]+)', url)
     if not file_id_match:
         raise ValueError(f"Could not extract a file ID from: {url}")
