@@ -1,0 +1,19 @@
+{
+  "name": "sheet_music",
+  "type": "module",
+  "version": "1.0.0",
+  "description": "A single-page app for searching and viewing a large personal sheet music library stored as PDFs on Google Drive.",
+  "main": "index.js",
+  "directories": {
+    "test": "tests"
+  },
+  "scripts": {
+    "test": "node --test tests/test_client.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "jsdom": "^29.0.1"
+  }
+}
