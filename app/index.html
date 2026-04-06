@@ -255,123 +255,32 @@
 </div>
 
 <script type="module">
+  import { searchSongs, escapeHtml, createApp } from './lib.js';
+
   // ── pdf.js setup ──
   const pdfjsLib = await import('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.2.67/pdf.min.mjs');
   pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.2.67/pdf.worker.min.mjs';
 
-  // ── State ──
-  let catalog = { volumes: {}, songs: [] };
-  let currentPdf = null;        // { doc, driveFileId }
+  // ── PDF state (not in lib.js — depends on pdf.js) ──
+  let currentPdf = null;
   let currentPageNum = 1;
   let currentZoom = 1.5;
-  let activeResult = null;
-  let isFullscreen = false;
+  let viewerSong = null;
+  let viewerVol = null;
 
   // ── Load catalog ──
   async function loadCatalog() {
     try {
       const resp = await fetch('/api/catalog');
-      catalog = await resp.json();
+      app.catalog = await resp.json();
     } catch (e) {
       console.error('Failed to load catalog:', e);
     }
   }
 
-  // ── Fuzzy search ──
-  function searchSongs(query) {
-    if (!query.trim()) return [];
-    const terms = query.toLowerCase().split(/\s+/);
-    const scored = [];
-    for (const song of catalog.songs) {
-      const titleLower = song.title.toLowerCase();
-      let match = true;
-      let score = 0;
-      for (const term of terms) {
-        const idx = titleLower.indexOf(term);
-        if (idx === -1) { match = false; break; }
-        // Boost for starts-with and exact position
-        if (idx === 0) score += 10;
-        score += (1 / (idx + 1));
-      }
-      if (match) {
-        scored.push({ song, score });
-      }
-    }
-    scored.sort((a, b) => b.score - a.score || a.song.title.localeCompare(b.song.title));
-    return scored.map(s => s.song);
-  }
-
-  function highlightMatch(title, query) {
-    if (!query.trim()) return escapeHtml(title);
-    const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
-    let result = escapeHtml(title);
-    for (const term of terms) {
-      const regex = new RegExp(`(${escapeRegex(term)})`, 'gi');
-      result = result.replace(regex, '<mark>$1</mark>');
-    }
-    return result;
-  }
-
-  function escapeHtml(s) {
-    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-  }
-  function escapeRegex(s) {
-    return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  }
-
-  // ── Render results ──
-  const resultsPanel = document.getElementById('results-panel');
-  const emptyState = document.getElementById('empty-state');
-  const resultCount = document.getElementById('result-count');
-  const searchInput = document.getElementById('search');
-
-  function renderResults(songs, query) {
-    // Clear previous results but keep empty-state element
-    resultsPanel.querySelectorAll('.result-item').forEach(el => el.remove());
-
-    if (!query.trim()) {
-      emptyState.style.display = '';
-      emptyState.textContent = 'Type to search your library';
-      resultCount.textContent = `${catalog.songs.length} songs indexed`;
-      return;
-    }
-    if (songs.length === 0) {
-      emptyState.style.display = '';
-      emptyState.textContent = 'No matching songs';
-      resultCount.textContent = '';
-      return;
-    }
-
-    emptyState.style.display = 'none';
-    resultCount.textContent = `${songs.length} result${songs.length === 1 ? '' : 's'}`;
-
-    for (const song of songs) {
-      const vol = catalog.volumes[song.volumeId] || {};
-      const div = document.createElement('div');
-      div.className = 'result-item';
-      div.innerHTML = `
-        <div class="result-title">${highlightMatch(song.title, query)}</div>
-        <div class="result-meta">
-          <span class="volume-name">${escapeHtml(vol.name || song.volumeId)}</span>
-          &middot; p. ${song.nominalPage}
-          ${song.composer ? ' &middot; ' + escapeHtml(song.composer) : ''}
-        </div>
-      `;
-      div.addEventListener('click', () => openSong(song, div));
-      resultsPanel.appendChild(div);
-    }
-
-    if (isFullscreen) buildTiles();
-  }
-
   // ── Open a song in the viewer ──
   async function openSong(song, el) {
-    // Mark active
-    if (activeResult) activeResult.classList.remove('active');
-    el.classList.add('active');
-    activeResult = el;
-
-    const vol = catalog.volumes[song.volumeId] || {};
+    const vol = app.catalog.volumes[song.volumeId] || {};
     const driveFileId = vol.driveFileId;
     const offset = vol.pageOffset || 0;
     const targetPage = song.nominalPage + offset;
@@ -381,9 +290,15 @@
       return;
     }
 
-    showViewer(song, vol);
+    viewerSong = song;
+    viewerVol = vol;
+    app.showViewer();
 
-    // Load PDF if different from current
+    document.getElementById('btn-prev').addEventListener('click', () => navigatePage(-1));
+    document.getElementById('btn-next').addEventListener('click', () => navigatePage(1));
+    document.getElementById('btn-zoom-out').addEventListener('click', () => zoom(-0.25));
+    document.getElementById('btn-zoom-in').addEventListener('click', () => zoom(0.25));
+
     if (!currentPdf || currentPdf.driveFileId !== driveFileId) {
       try {
         let pdfUrl = `/api/pdf/${driveFileId}`;
@@ -401,35 +316,9 @@
     await renderPage(clampedPage, song, vol);
   }
 
-  // ── Viewer UI ──
-  const viewerPanel = document.getElementById('viewer-panel');
-  const viewerEmpty = document.getElementById('viewer-empty');
-  let viewerSong = null;
-  let viewerVol = null;
-
-  function showViewer(song, vol) {
-    viewerSong = song;
-    viewerVol = vol;
-    viewerPanel.innerHTML = `
-      <div class="viewer-toolbar">
-        <button id="btn-prev" title="Previous page">&larr; Prev</button>
-        <button id="btn-next" title="Next page">Next &rarr;</button>
-        <button id="btn-zoom-out" title="Zoom out">&minus;</button>
-        <button id="btn-zoom-in" title="Zoom in">+</button>
-        <span class="page-info" id="page-info"></span>
-        <button id="btn-fullscreen" class="btn-fullscreen" title="Toggle fullscreen">${isFullscreen ? 'Exit' : 'Focus'}</button>
-      </div>
-      <div id="viewer-canvas-container"><canvas id="pdf-canvas"></canvas></div>
-    `;
-    document.getElementById('btn-prev').addEventListener('click', () => navigatePage(-1));
-    document.getElementById('btn-next').addEventListener('click', () => navigatePage(1));
-    document.getElementById('btn-zoom-out').addEventListener('click', () => zoom(-0.25));
-    document.getElementById('btn-zoom-in').addEventListener('click', () => zoom(0.25));
-    document.getElementById('btn-fullscreen').addEventListener('click', () => toggleFullscreen());
-  }
-
   function showViewerError(msg) {
-    viewerPanel.innerHTML = `<div class="viewer-empty">${escapeHtml(msg)}</div>`;
+    document.getElementById('viewer-panel').innerHTML =
+      `<div class="viewer-empty">${escapeHtml(msg)}</div>`;
   }
 
   async function renderPage(pageNum, song, vol) {
@@ -468,61 +357,23 @@
     if (currentPdf) renderPage(currentPageNum, viewerSong, viewerVol);
   }
 
-  // ── Fullscreen mode ──
-  function toggleFullscreen(force) {
-    isFullscreen = (force !== undefined) ? force : !isFullscreen;
-    document.body.classList.toggle('fullscreen', isFullscreen);
-    if (isFullscreen) buildTiles();
-    const btn = document.getElementById('btn-fullscreen');
-    if (btn) btn.textContent = isFullscreen ? 'Exit' : 'Focus';
-  }
-
-  function buildTiles() {
-    const container = document.getElementById('fs-tiles');
-    container.innerHTML = '';
-    const items = resultsPanel.querySelectorAll('.result-item');
-    items.forEach(item => {
-      const title = item.querySelector('.result-title')?.textContent || '?';
-      const shortLabel = title.substring(0, 6).trim();
-      const tile = document.createElement('div');
-      tile.className = 'fs-tile' + (item.classList.contains('active') ? ' active' : '');
-      tile.textContent = shortLabel;
-      tile.title = title;
-      tile.addEventListener('click', () => {
-        item.click();
-        container.querySelectorAll('.fs-tile').forEach(t => t.classList.remove('active'));
-        tile.classList.add('active');
-      });
-      container.appendChild(tile);
-    });
-  }
+  // ── Create app (search, results, fullscreen — all from lib.js) ──
+  const app = createApp(document, { onOpenSong: openSong });
 
   // ── Keyboard shortcuts ──
+  const searchInput = document.getElementById('search');
   document.addEventListener('keydown', (e) => {
     if (e.target === searchInput) return;
     if (e.key === 'ArrowLeft') navigatePage(-1);
     if (e.key === 'ArrowRight') navigatePage(1);
     if (e.key === '+' || e.key === '=') zoom(0.25);
     if (e.key === '-') zoom(-0.25);
-    if (e.key === 'f' || e.key === 'F') toggleFullscreen();
-  });
-
-  // ── Wire up fullscreen search icon ──
-  document.getElementById('fs-search-icon').addEventListener('click', () => {
-    toggleFullscreen(false);
-    searchInput.focus();
-  });
-
-  // ── Wire up search ──
-  searchInput.addEventListener('input', () => {
-    const q = searchInput.value;
-    const results = searchSongs(q);
-    renderResults(results, q);
+    if (e.key === 'f' || e.key === 'F') app.toggleFullscreen();
   });
 
   // ── Init ──
   await loadCatalog();
-  renderResults([], '');
+  app.renderResults([], '');
 </script>
 </body>
 </html>
