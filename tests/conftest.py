@@ -15,6 +15,7 @@ SAMPLE_CATALOG = {
         "Realbk1": {
             "name": "The Real Book Vol 1",
             "driveFileId": "abc123",
+            "resourceKey": "rk-test-456",
             "pageOffset": 5,
             "notes": "",
         }

@@ -24,6 +24,17 @@ class TestCatalogEndpoint:
         assert "songs" in data
         assert len(data["songs"]) == 3
 
+    def test_catalog_includes_resource_key(self, sample_catalog):
+        mock_path = MagicMock()
+        mock_path.exists.return_value = True
+        mock_path.read_text.return_value = json.dumps(sample_catalog)
+        with patch("server.CATALOG_PATH", mock_path):
+            from server import app
+            client = TestClient(app)
+            resp = client.get("/api/catalog")
+        data = resp.json()
+        assert data["volumes"]["Realbk1"]["resourceKey"] == "rk-test-456"
+
     def test_catalog_not_found(self):
         mock_path = MagicMock()
         mock_path.exists.return_value = False
@@ -57,6 +68,60 @@ class TestPdfProxy:
         assert resp.status_code == 200
         assert resp.content == fake_pdf_bytes
         assert "application/pdf" in resp.headers["content-type"]
+
+    def test_resourcekey_passed_as_header(self):
+        """When ?resourcekey= is provided, the server sends X-Goog-Drive-Resource-Keys."""
+        fake_pdf_bytes = b"%PDF-1.4 fake content"
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.headers = {"content-type": "application/pdf"}
+        mock_response.content = fake_pdf_bytes
+
+        captured_headers = {}
+
+        async def mock_get(url, **kwargs):
+            captured_headers.update(kwargs.get("headers", {}))
+            return mock_response
+
+        mock_client = AsyncMock()
+        mock_client.get = mock_get
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+
+        with patch("server.httpx.AsyncClient", return_value=mock_client):
+            from server import app
+            client = TestClient(app)
+            resp = client.get("/api/pdf/file123?resourcekey=rk-abc")
+
+        assert resp.status_code == 200
+        assert captured_headers["X-Goog-Drive-Resource-Keys"] == "file123/rk-abc"
+
+    def test_no_resourcekey_sends_no_header(self):
+        """When no ?resourcekey= is provided, no resource key header is sent."""
+        fake_pdf_bytes = b"%PDF-1.4 fake content"
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.headers = {"content-type": "application/pdf"}
+        mock_response.content = fake_pdf_bytes
+
+        captured_headers = {}
+
+        async def mock_get(url, **kwargs):
+            captured_headers.update(kwargs.get("headers", {}))
+            return mock_response
+
+        mock_client = AsyncMock()
+        mock_client.get = mock_get
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+
+        with patch("server.httpx.AsyncClient", return_value=mock_client):
+            from server import app
+            client = TestClient(app)
+            resp = client.get("/api/pdf/file123")
+
+        assert resp.status_code == 200
+        assert "X-Goog-Drive-Resource-Keys" not in captured_headers
 
     def test_drive_returns_error(self):
         mock_response = MagicMock()
