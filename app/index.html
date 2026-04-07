@@ -156,11 +156,24 @@
   .viewer-empty {
     flex: 1;
     display: flex;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
     color: var(--text-dim);
     font-size: 15px;
+    gap: 16px;
   }
+  .btn-ingest {
+    background: var(--surface2);
+    color: var(--text);
+    border: none;
+    padding: 8px 18px;
+    border-radius: var(--radius);
+    cursor: pointer;
+    font-size: 13px;
+    transition: background 0.15s;
+  }
+  .btn-ingest:hover { background: var(--accent); }
 
   /* -- Fullscreen mode -- */
   body.fullscreen header {
@@ -299,7 +312,7 @@
     const targetPage = song.nominalPage + offset;
 
     if (!driveFileId) {
-      showViewerError(`No Drive file ID configured for volume "${vol.name || song.volumeId}"`);
+      showMissingDriveId(song.volumeId, vol);
       return;
     }
 
@@ -333,6 +346,26 @@
   function showViewerError(msg) {
     document.getElementById('viewer-panel').innerHTML =
       `<div class="viewer-empty">${escapeHtml(msg)}</div>`;
+  }
+
+  function showMissingDriveId(volumeId, vol) {
+    const name = vol.name || volumeId;
+    const cmd = `python ingestion/ingest.py add-volume --id ${volumeId} --name "${name}" --url "PASTE_SHARE_LINK"`;
+    const panel = document.getElementById('viewer-panel');
+    panel.innerHTML = `
+      <div class="viewer-empty">
+        <span>No Drive file ID configured for volume "${escapeHtml(name)}"</span>
+        <button class="btn-ingest" id="btn-ingest" title="Copy add-volume command to clipboard">Copy ingest command</button>
+      </div>`;
+    panel.querySelector('#btn-ingest').addEventListener('click', async (e) => {
+      try {
+        await navigator.clipboard.writeText(cmd);
+        e.target.textContent = 'Copied!';
+        setTimeout(() => { e.target.textContent = 'Copy ingest command'; }, 2000);
+      } catch {
+        prompt('Copy this command:', cmd);
+      }
+    });
   }
 
   async function renderPage(pageNum, song, vol) {
