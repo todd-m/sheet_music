@@ -4,7 +4,6 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Sheet Music Library</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.2.67/pdf.min.mjs" type="module"></script>
 <style>
   :root {
     --bg: #1a1a2e;
@@ -257,9 +256,23 @@
 <script type="module">
   import { searchSongs, escapeHtml, createApp } from './lib.js';
 
-  // ── pdf.js setup ──
-  const pdfjsLib = await import('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.2.67/pdf.min.mjs');
-  pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.2.67/pdf.worker.min.mjs';
+  // ── pdf.js (loaded lazily on first use) ──
+  const PDFJS_URL = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.2.67/pdf.min.mjs';
+  const PDFJS_WORKER_URL = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.2.67/pdf.worker.min.mjs';
+  let pdfjsLib = null;
+
+  async function loadPdfJs() {
+    if (pdfjsLib) return pdfjsLib;
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        pdfjsLib = await import(PDFJS_URL);
+        pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_WORKER_URL;
+        return pdfjsLib;
+      } catch (e) {
+        if (attempt === 2) throw new Error(`Failed to load PDF viewer: ${e.message}`);
+      }
+    }
+  }
 
   // ── PDF state (not in lib.js — depends on pdf.js) ──
   let currentPdf = null;
@@ -301,6 +314,7 @@
 
     if (!currentPdf || currentPdf.driveFileId !== driveFileId) {
       try {
+        await loadPdfJs();
         let pdfUrl = `/api/pdf/${driveFileId}`;
         if (vol.resourceKey) pdfUrl += `?resourcekey=${encodeURIComponent(vol.resourceKey)}`;
         const loadingTask = pdfjsLib.getDocument(pdfUrl);
