@@ -29,8 +29,8 @@ test-js: ## Run client-side JS tests
 lint: ## Run ruff linter (if installed)
 	$(BIN)/python -m ruff check .
 
-serve: ## Start the dev server (PORT=8000)
-	$(BIN)/uvicorn server:app --reload --port $(PORT)
+serve: ## Start the dev server (PORT=7001, all interfaces)
+	$(BIN)/uvicorn server:app --reload --host 0.0.0.0 --port $(PORT)
 
 clean: ## Remove virtual env and caches
 	rm -rf $(VENV) __pycache__ .pytest_cache
