@@ -45,9 +45,14 @@ class TestCatalogEndpoint:
         assert resp.status_code == 404
 
 
-# ── PDF proxy endpoint ──
+# ── PDF proxy — public (no service account) ──
 
-class TestPdfProxy:
+class TestPdfProxyPublic:
+    """Tests for the public download fallback (no credentials)."""
+
+    def _patch_no_credentials(self):
+        return patch("server._credentials", None)
+
     def test_successful_proxy(self):
         fake_pdf_bytes = b"%PDF-1.4 fake content"
         mock_response = MagicMock()
@@ -60,7 +65,8 @@ class TestPdfProxy:
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=None)
 
-        with patch("server.httpx.AsyncClient", return_value=mock_client):
+        with self._patch_no_credentials(), \
+             patch("server.httpx.AsyncClient", return_value=mock_client):
             from server import app
             client = TestClient(app)
             resp = client.get("/api/pdf/test_file_id")
@@ -88,7 +94,8 @@ class TestPdfProxy:
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=None)
 
-        with patch("server.httpx.AsyncClient", return_value=mock_client):
+        with self._patch_no_credentials(), \
+             patch("server.httpx.AsyncClient", return_value=mock_client):
             from server import app
             client = TestClient(app)
             resp = client.get("/api/pdf/file123?resourcekey=rk-abc")
@@ -115,7 +122,8 @@ class TestPdfProxy:
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=None)
 
-        with patch("server.httpx.AsyncClient", return_value=mock_client):
+        with self._patch_no_credentials(), \
+             patch("server.httpx.AsyncClient", return_value=mock_client):
             from server import app
             client = TestClient(app)
             resp = client.get("/api/pdf/file123")
@@ -133,7 +141,8 @@ class TestPdfProxy:
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=None)
 
-        with patch("server.httpx.AsyncClient", return_value=mock_client):
+        with self._patch_no_credentials(), \
+             patch("server.httpx.AsyncClient", return_value=mock_client):
             from server import app
             client = TestClient(app)
             resp = client.get("/api/pdf/bad_id")
@@ -152,7 +161,8 @@ class TestPdfProxy:
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=None)
 
-        with patch("server.httpx.AsyncClient", return_value=mock_client):
+        with self._patch_no_credentials(), \
+             patch("server.httpx.AsyncClient", return_value=mock_client):
             from server import app
             client = TestClient(app)
             resp = client.get("/api/pdf/some_id")
@@ -186,10 +196,142 @@ class TestPdfProxy:
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=None)
 
-        with patch("server.httpx.AsyncClient", return_value=mock_client):
+        with self._patch_no_credentials(), \
+             patch("server.httpx.AsyncClient", return_value=mock_client):
             from server import app
             client = TestClient(app)
             resp = client.get("/api/pdf/large_file_id")
 
         assert resp.status_code == 200
         assert resp.content == b"%PDF-1.4 confirmed"
+
+
+# ── PDF proxy — authenticated (service account) ──
+
+class TestPdfProxyAuthenticated:
+    """Tests for the Drive API path (with service account credentials)."""
+
+    def _make_mock_credentials(self):
+        creds = MagicMock()
+        creds.valid = True
+        creds.token = "fake-access-token"
+        return creds
+
+    def test_uses_bearer_auth(self):
+        """Authenticated path sends Authorization: Bearer header."""
+        fake_pdf_bytes = b"%PDF-1.4 authenticated"
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.content = fake_pdf_bytes
+
+        captured = {}
+
+        async def mock_get(url, **kwargs):
+            captured["url"] = url
+            captured["headers"] = kwargs.get("headers", {})
+            return mock_response
+
+        mock_client = AsyncMock()
+        mock_client.get = mock_get
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+
+        with patch("server._credentials", self._make_mock_credentials()), \
+             patch("server.httpx.AsyncClient", return_value=mock_client):
+            from server import app
+            client = TestClient(app)
+            resp = client.get("/api/pdf/file123")
+
+        assert resp.status_code == 200
+        assert resp.content == fake_pdf_bytes
+        assert captured["headers"]["Authorization"] == "Bearer fake-access-token"
+        assert "googleapis.com/drive" in captured["url"]
+
+    def test_resourcekey_ignored_when_authenticated(self):
+        """Authenticated path ignores the resourcekey param (not needed with Drive API)."""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.content = b"%PDF-1.4"
+
+        captured = {}
+
+        async def mock_get(url, **kwargs):
+            captured["headers"] = kwargs.get("headers", {})
+            return mock_response
+
+        mock_client = AsyncMock()
+        mock_client.get = mock_get
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+
+        with patch("server._credentials", self._make_mock_credentials()), \
+             patch("server.httpx.AsyncClient", return_value=mock_client):
+            from server import app
+            client = TestClient(app)
+            resp = client.get("/api/pdf/file123?resourcekey=rk-abc")
+
+        assert resp.status_code == 200
+        assert "X-Goog-Drive-Resource-Keys" not in captured["headers"]
+
+    def test_file_not_found(self):
+        """Drive API 404 returns a helpful error."""
+        mock_response = MagicMock()
+        mock_response.status_code = 404
+
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(return_value=mock_response)
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+
+        with patch("server._credentials", self._make_mock_credentials()), \
+             patch("server.httpx.AsyncClient", return_value=mock_client):
+            from server import app
+            client = TestClient(app)
+            resp = client.get("/api/pdf/bad_id")
+
+        assert resp.status_code == 404
+        assert "shared with the service account" in resp.json()["detail"]
+
+    def test_drive_api_error(self):
+        """Non-404 Drive API errors return 502."""
+        mock_response = MagicMock()
+        mock_response.status_code = 403
+
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(return_value=mock_response)
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+
+        with patch("server._credentials", self._make_mock_credentials()), \
+             patch("server.httpx.AsyncClient", return_value=mock_client):
+            from server import app
+            client = TestClient(app)
+            resp = client.get("/api/pdf/file123")
+
+        assert resp.status_code == 502
+
+    def test_refreshes_expired_token(self):
+        """When credentials are expired, they get refreshed before the request."""
+        creds = MagicMock()
+        creds.valid = False
+        creds.token = "refreshed-token"
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.content = b"%PDF-1.4"
+
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(return_value=mock_response)
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+
+        mock_request_cls = MagicMock()
+        with patch("server._credentials", creds), \
+             patch("server.httpx.AsyncClient", return_value=mock_client), \
+             patch.dict("sys.modules", {"google.auth.transport.requests": MagicMock(Request=mock_request_cls)}):
+            from server import app
+            client = TestClient(app)
+            resp = client.get("/api/pdf/file123")
+
+        assert resp.status_code == 200
+        creds.refresh.assert_called_once()
