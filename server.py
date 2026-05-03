@@ -27,6 +27,8 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
+from routers.drive_file import router as drive_router
+
 app = FastAPI()
 log = logging.getLogger("sheet_music")
 
@@ -149,6 +151,8 @@ async def _proxy_pdf_public(drive_file_id: str, resourcekey: str | None = None):
         headers={"Content-Disposition": f"inline; filename={drive_file_id}.pdf"},
     )
 
+
+app.include_router(drive_router)
 
 # Serve the SPA — must be last so it doesn't shadow API routes.
 app.mount("/", StaticFiles(directory=str(APP_DIR), html=True), name="static")
