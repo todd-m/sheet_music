@@ -17,8 +17,12 @@ from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaIoBaseDownload
 
-# ID of the zip file shared with the service account on Google Drive.
-FILE_ID = "REPLACE_WITH_ACTUAL_FILE_ID"
+# Name of the zip file shared with the service account on Google Drive.
+FILE_NAME = "hot dog stand.zip"
+
+# Scope the search to a specific folder to prevent name collisions.
+# Set to None to search across all files visible to the service account.
+FOLDER_ID = None
 
 SERVICE_ACCOUNT_KEY_PATH = Path(__file__).resolve().parent.parent / "credentials.json"
 SCOPES = ["https://www.googleapis.com/auth/drive.readonly"]
@@ -36,6 +40,31 @@ def _build_drive_service():
     return build("drive", "v3", credentials=creds)
 
 
+def _resolve_file(service) -> dict:
+    """Return the first Drive file matching FILE_NAME as {"id": ..., "name": ...}."""
+    q = f"name = '{FILE_NAME}' and trashed = false"
+    if FOLDER_ID:
+        q += f" and '{FOLDER_ID}' in parents"
+
+    try:
+        results = service.files().list(
+            q=q,
+            fields="files(id, name)",
+            pageSize=1,
+        ).execute()
+    except HttpError as e:
+        raise HTTPException(502, f"Drive API error resolving file name ({e.status_code})")
+
+    files = results.get("files", [])
+    if not files:
+        raise HTTPException(
+            404,
+            f"No Drive file named '{FILE_NAME}' found — check FILE_NAME and that it is shared with the service account",
+        )
+
+    return files[0]
+
+
 # TODO: add auth
 @router.get("/drive/file")
 def download_drive_file():
@@ -43,18 +72,13 @@ def download_drive_file():
         raise HTTPException(503, "Service account credentials not configured")
 
     service = _build_drive_service()
-
-    try:
-        meta = service.files().get(fileId=FILE_ID, fields="name").execute()
-    except HttpError as e:
-        if e.status_code == 404:
-            raise HTTPException(404, "File not found — check FILE_ID and that it is shared with the service account")
-        raise HTTPException(502, f"Drive API error ({e.status_code})")
-    filename = meta.get("name", f"{FILE_ID}.zip")
+    file = _resolve_file(service)
+    file_id = file["id"]
+    filename = file["name"]
 
     def _iter_chunks():
         try:
-            request = service.files().get_media(fileId=FILE_ID)
+            request = service.files().get_media(fileId=file_id)
             buf = io.BytesIO()
             downloader = MediaIoBaseDownload(buf, request, chunksize=CHUNK_SIZE)
             done = False
