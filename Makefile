@@ -3,7 +3,7 @@ VENV    := env
 BIN     := $(VENV)/bin
 PORT    ?= 7001
 
-.PHONY: help venv install install-ingestion test test-py test-js lint serve clean
+.PHONY: help venv install install-ingestion test test-py test-js lint audit ci serve clean
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -25,6 +25,11 @@ test-py: ## Run Python tests
 
 test-js: ## Run client-side JS tests
 	node --test tests/test_client.js
+
+audit: ## Scan dependencies for known vulnerabilities
+	$(BIN)/pip-audit -r requirements.txt
+
+ci: test audit ## Run tests and security audit
 
 lint: ## Run ruff linter (if installed)
 	$(BIN)/python -m ruff check .
