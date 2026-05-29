@@ -174,6 +174,19 @@
     transition: background 0.15s;
   }
   .btn-ingest:hover { background: var(--accent); }
+  .btn-retry {
+    display: block;
+    margin: 12px auto 0;
+    background: var(--surface2);
+    color: var(--text);
+    border: none;
+    padding: 8px 18px;
+    border-radius: var(--radius);
+    cursor: pointer;
+    font-size: 13px;
+    transition: background 0.15s;
+  }
+  .btn-retry:hover { background: var(--accent); }
 
   /* -- Fullscreen mode -- */
   body.fullscreen header {
@@ -296,11 +309,21 @@
 
   // ── Load catalog ──
   async function loadCatalog() {
+    app.setCatalogStatus('loading');
+    app.renderResults([], '');
     try {
       const resp = await fetch('/api/catalog');
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       app.catalog = await resp.json();
+      app.setCatalogStatus('ready');
+      app.renderResults([], '');
     } catch (e) {
       console.error('Failed to load catalog:', e);
+      const message = e.message.startsWith('HTTP ')
+        ? `Server returned an error (${e.message}).`
+        : 'Could not reach the server — check that it\'s running.';
+      app.setCatalogStatus('error', { message, retry: loadCatalog });
+      app.renderResults([], '');
     }
   }
 
@@ -334,7 +357,7 @@
         const doc = await loadingTask.promise;
         currentPdf = { doc, driveFileId };
       } catch (e) {
-        showViewerError(`Failed to load PDF: ${e.message}`);
+        showViewerError('Failed to load PDF — Google Drive may be temporarily inaccessible.');
         return;
       }
     }
@@ -420,7 +443,6 @@
 
   // ── Init ──
   await loadCatalog();
-  app.renderResults([], '');
 </script>
 </body>
 </html>
