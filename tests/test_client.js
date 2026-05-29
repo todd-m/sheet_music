@@ -193,7 +193,7 @@ describe('renderResults', () => {
   let dom, lib, app;
   beforeEach(async () => {
     ({ dom, lib } = await loadLib());
-    app = lib.createApp(dom.window.document, { catalog: SAMPLE_CATALOG });
+    app = lib.createApp(dom.window.document, { catalog: SAMPLE_CATALOG, debounceMs: 0 });
   });
 
   it('shows empty state for blank query', () => {
@@ -252,14 +252,56 @@ describe('search input wiring', () => {
   let dom, lib, app;
   beforeEach(async () => {
     ({ dom, lib } = await loadLib());
-    app = lib.createApp(dom.window.document, { catalog: SAMPLE_CATALOG });
+    app = lib.createApp(dom.window.document, { catalog: SAMPLE_CATALOG, debounceMs: 0 });
   });
 
-  it('typing in search input renders results', () => {
+  it('typing in search input renders results', async () => {
+    const input = dom.window.document.getElementById('search');
+    input.value = 'autumn';
+    input.dispatchEvent(new dom.window.Event('input'));
+    await new Promise(r => setTimeout(r, 50));
+    const items = dom.window.document.querySelectorAll('.result-item');
+    assert.equal(items.length, 1);
+  });
+});
+
+
+describe('search input debounce', () => {
+  let dom, lib, app;
+  beforeEach(async () => {
+    ({ dom, lib } = await loadLib());
+    app = lib.createApp(dom.window.document, { catalog: SAMPLE_CATALOG, debounceMs: 100 });
+  });
+
+  it('does not render immediately on input', () => {
     const input = dom.window.document.getElementById('search');
     input.value = 'autumn';
     input.dispatchEvent(new dom.window.Event('input'));
     const items = dom.window.document.querySelectorAll('.result-item');
+    assert.equal(items.length, 0, 'should not render before debounce timeout');
+  });
+
+  it('renders results after the debounce period elapses', async () => {
+    const input = dom.window.document.getElementById('search');
+    input.value = 'autumn';
+    input.dispatchEvent(new dom.window.Event('input'));
+    await new Promise(r => setTimeout(r, 150));
+    const items = dom.window.document.querySelectorAll('.result-item');
+    assert.equal(items.length, 1);
+  });
+
+  it('cancels a pending render when typing continues', async () => {
+    const input = dom.window.document.getElementById('search');
+    input.value = 'aut';
+    input.dispatchEvent(new dom.window.Event('input'));
+    await new Promise(r => setTimeout(r, 40));
+    input.value = 'autumn';
+    input.dispatchEvent(new dom.window.Event('input'));
+    await new Promise(r => setTimeout(r, 40));
+    let items = dom.window.document.querySelectorAll('.result-item');
+    assert.equal(items.length, 0, 'should not have rendered mid-debounce');
+    await new Promise(r => setTimeout(r, 120));
+    items = dom.window.document.querySelectorAll('.result-item');
     assert.equal(items.length, 1);
   });
 });
@@ -273,7 +315,7 @@ describe('toggleFullscreen', () => {
   let dom, lib, app;
   beforeEach(async () => {
     ({ dom, lib } = await loadLib());
-    app = lib.createApp(dom.window.document, { catalog: SAMPLE_CATALOG });
+    app = lib.createApp(dom.window.document, { catalog: SAMPLE_CATALOG, debounceMs: 0 });
   });
 
   it('adds fullscreen class to body', () => {
@@ -317,7 +359,7 @@ describe('buildTiles', () => {
   let dom, lib, app;
   beforeEach(async () => {
     ({ dom, lib } = await loadLib());
-    app = lib.createApp(dom.window.document, { catalog: SAMPLE_CATALOG });
+    app = lib.createApp(dom.window.document, { catalog: SAMPLE_CATALOG, debounceMs: 0 });
   });
 
   it('creates a tile for each result item', () => {
@@ -395,7 +437,7 @@ describe('search icon exits fullscreen', () => {
   let dom, lib, app;
   beforeEach(async () => {
     ({ dom, lib } = await loadLib());
-    app = lib.createApp(dom.window.document, { catalog: SAMPLE_CATALOG });
+    app = lib.createApp(dom.window.document, { catalog: SAMPLE_CATALOG, debounceMs: 0 });
   });
 
   it('clicking search icon exits fullscreen', () => {
@@ -418,7 +460,7 @@ describe('showViewer', () => {
   let dom, lib, app;
   beforeEach(async () => {
     ({ dom, lib } = await loadLib());
-    app = lib.createApp(dom.window.document, { catalog: SAMPLE_CATALOG });
+    app = lib.createApp(dom.window.document, { catalog: SAMPLE_CATALOG, debounceMs: 0 });
   });
 
   it('renders toolbar with navigation and fullscreen buttons', () => {
@@ -454,5 +496,92 @@ describe('showViewer', () => {
     app.showViewer();
     assert.ok(dom.window.document.getElementById('pdf-canvas'));
     assert.ok(dom.window.document.getElementById('viewer-canvas-container'));
+  });
+});
+
+
+describe('catalog status', () => {
+  let dom, lib, app;
+  beforeEach(async () => {
+    ({ dom, lib } = await loadLib());
+    app = lib.createApp(dom.window.document, { catalog: SAMPLE_CATALOG, debounceMs: 0 });
+  });
+
+  it('shows loading message when status is loading', () => {
+    app.setCatalogStatus('loading');
+    app.renderResults([], '');
+    const emptyState = dom.window.document.getElementById('empty-state');
+    assert.ok(emptyState.textContent.includes('Loading'));
+  });
+
+  it('shows loading message with a non-empty query', () => {
+    app.setCatalogStatus('loading');
+    app.renderResults([], 'autumn');
+    const emptyState = dom.window.document.getElementById('empty-state');
+    assert.ok(emptyState.textContent.includes('Loading'));
+  });
+
+  it('shows error message when status is error', () => {
+    app.setCatalogStatus('error', { message: 'Could not reach the server — check that it\'s running.' });
+    app.renderResults([], '');
+    const emptyState = dom.window.document.getElementById('empty-state');
+    assert.ok(emptyState.textContent.includes('Could not reach the server'));
+  });
+
+  it('shows retry button when status is error', () => {
+    app.setCatalogStatus('error', { message: 'Could not reach the server — check that it\'s running.' });
+    app.renderResults([], '');
+    const retryBtn = dom.window.document.querySelector('.btn-retry');
+    assert.ok(retryBtn, 'retry button should be present');
+  });
+
+  it('retry button calls the retry function', () => {
+    let retryCalled = false;
+    app.setCatalogStatus('error', {
+      message: 'Server error',
+      retry: () => { retryCalled = true; },
+    });
+    app.renderResults([], '');
+    dom.window.document.querySelector('.btn-retry').click();
+    assert.ok(retryCalled);
+  });
+
+  it('error state shows regardless of query', () => {
+    app.setCatalogStatus('error', { message: 'Server error' });
+    app.renderResults([], 'autumn');
+    const items = dom.window.document.querySelectorAll('.result-item');
+    assert.equal(items.length, 0);
+    const emptyState = dom.window.document.getElementById('empty-state');
+    assert.ok(emptyState.textContent.includes('Server error'));
+  });
+
+  it('shows normal results when status is ready', () => {
+    app.setCatalogStatus('ready');
+    const songs = lib.searchSongs(SAMPLE_CATALOG, 'all');
+    app.renderResults(songs, 'all');
+    const items = dom.window.document.querySelectorAll('.result-item');
+    assert.ok(items.length >= 2);
+  });
+
+  it('clears error state when status returns to ready', () => {
+    app.setCatalogStatus('error', { message: 'Server error' });
+    app.renderResults([], '');
+    app.setCatalogStatus('ready');
+    app.renderResults([], '');
+    const retryBtn = dom.window.document.querySelector('.btn-retry');
+    assert.equal(retryBtn, null, 'retry button should be gone after recovery');
+  });
+
+  it('retry button survives multiple renderResults calls in error state', () => {
+    let retryCalled = false;
+    app.setCatalogStatus('error', {
+      message: 'Server error',
+      retry: () => { retryCalled = true; },
+    });
+    app.renderResults([], '');
+    app.renderResults([], 'aut');   // simulate keypress mid-error
+    app.renderResults([], 'autumn');
+    dom.window.document.querySelector('.btn-retry').click();
+    assert.ok(retryCalled, 'retry should still fire after multiple renderResults calls');
   });
 });

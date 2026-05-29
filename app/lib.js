@@ -48,10 +48,13 @@ export function searchSongs(catalog, query) {
  * Create the app controller. Requires a DOM document and options.
  * Separating construction from side effects makes DOM-dependent logic testable.
  */
-export function createApp(doc, { catalog: initialCatalog, onOpenSong } = {}) {
+export function createApp(doc, { catalog: initialCatalog, onOpenSong, debounceMs = 1000 } = {}) {
   let catalog = initialCatalog || { volumes: {}, songs: [] };
   let isFullscreen = false;
   let activeResult = null;
+  let catalogStatus = 'ready';
+  let catalogMessage = '';
+  let catalogRetryFn = null;
 
   const resultsPanel = doc.getElementById('results-panel');
   const emptyState = doc.getElementById('empty-state');
@@ -59,8 +62,40 @@ export function createApp(doc, { catalog: initialCatalog, onOpenSong } = {}) {
   const searchInput = doc.getElementById('search');
   const viewerPanel = doc.getElementById('viewer-panel');
 
+  function setCatalogStatus(status, opts = {}) {
+    catalogStatus = status;
+    catalogMessage = opts.message || '';
+    catalogRetryFn = opts.retry || null;
+  }
+
   function renderResults(songs, query) {
     resultsPanel.querySelectorAll('.result-item').forEach(el => el.remove());
+
+    if (catalogStatus === 'loading') {
+      emptyState.style.display = '';
+      emptyState.textContent = 'Loading your library…';
+      resultCount.textContent = '';
+      return;
+    }
+
+    if (catalogStatus === 'error') {
+      if (!emptyState.querySelector('.btn-retry')) {
+        emptyState.style.display = '';
+        emptyState.innerHTML = '';
+        const msgSpan = doc.createElement('span');
+        msgSpan.textContent = catalogMessage;
+        emptyState.appendChild(msgSpan);
+        const btn = doc.createElement('button');
+        btn.className = 'btn-retry';
+        btn.textContent = 'Retry';
+        if (catalogRetryFn) {
+          btn.addEventListener('click', catalogRetryFn);
+        }
+        emptyState.appendChild(btn);
+      }
+      resultCount.textContent = '';
+      return;
+    }
 
     if (!query.trim()) {
       emptyState.style.display = '';
@@ -152,10 +187,14 @@ export function createApp(doc, { catalog: initialCatalog, onOpenSong } = {}) {
   });
 
   // Wire search input
+  let searchTimer = null;
   searchInput.addEventListener('input', () => {
-    const q = searchInput.value;
-    const results = searchSongs(catalog, q);
-    renderResults(results, q);
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => {
+      const q = searchInput.value;
+      const results = searchSongs(catalog, q);
+      renderResults(results, q);
+    }, debounceMs);
   });
 
   return {
@@ -166,6 +205,7 @@ export function createApp(doc, { catalog: initialCatalog, onOpenSong } = {}) {
     showViewer,
     toggleFullscreen,
     buildTiles,
+    setCatalogStatus,
     search(q) { return searchSongs(catalog, q); },
   };
 }
