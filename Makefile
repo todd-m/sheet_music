@@ -3,7 +3,7 @@ VENV    := env
 BIN     := $(VENV)/bin
 PORT    ?= 7001
 
-.PHONY: help venv install install-ingestion test test-py test-js lint audit ci serve clean
+.PHONY: help venv install install-ingestion test test-py test-js lint audit check-cdn ci serve clean
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -29,7 +29,13 @@ test-js: ## Run client-side JS tests
 audit: ## Scan dependencies for known vulnerabilities
 	$(BIN)/pip-audit -r requirements.txt
 
-ci: test audit ## Run tests and security audit
+check-cdn: ## Verify PDF.js CDN URLs in app/index.html are reachable
+	@grep -oE 'https://cdn\.jsdelivr\.net/npm/pdfjs-dist@[a-zA-Z0-9./_-]+' app/index.html | sort -u | while read url; do \
+		printf "  %s ... " "$$url"; \
+		curl -fsI "$$url" > /dev/null && echo "ok" || { echo "FAILED"; exit 1; }; \
+	done
+
+ci: test audit check-cdn ## Run tests, security audit, and CDN URL liveness check
 
 lint: ## Run ruff linter (if installed)
 	$(BIN)/python -m ruff check .

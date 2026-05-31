@@ -6,6 +6,8 @@ Auto-loaded by Claude Code at session start. `README.md` has the stable architec
 
 Most recent first; sourced from `git log`.
 
+- **`make check-cdn`** *(uncommitted)* — Makefile target that grep-extracts the pinned PDF.js CDN URLs from `app/index.html` and HEAD-checks they're reachable; wired into `make ci`. Catches 404s on the pinned URLs (would have caught the v3 `.mjs` mistake); does not catch iOS-engine compatibility regressions.
+- **Legacy iOS 15 PDF viewer fix** (7037acd) — PDF.js pinned to v3.11.174 legacy UMD and loaded via a classic `<script>` tag in `loadPdfJs()`, replacing the v4 ESM dynamic import that broke on older iPads (Safari 15). See gotcha below.
 - **`make ci` / `make audit`** (2ff29ce) — Makefile targets for pip-audit vulnerability scanning.
 - **Offline mode handling** (c1d565f, 2957ddd, 7584770, 64a4709) — merged feature: `createApp` models catalog status (`loading` / `ready` / `error`), search input is debounced, catalog-load failures surface a retry UI, PDF load errors show clearer messages. Design spec lives in `docs/`.
 - **Starlette security patch** (94a4142).
@@ -15,7 +17,6 @@ Most recent first; sourced from `git log`.
 - **Script declare-order fix for WebKit** (4781dff) — search results were silently failing on Safari due to script ordering. See gotcha below.
 - **Service-account Drive auth** (98b25a1) — server uses `credentials.json` Bearer auth when present, falls back to public links otherwise.
 - **Extracted `app/lib.js`** (a32a679) — testable JS (search, `escapeHtml`, rendering, fullscreen, tiles, viewer chrome) extracted from `index.html`. PDF/canvas code stays inline because it depends on pdf.js.
-- **`resourceKey` support** (0c58f32) — catalog can specify a Drive `resourceKey` per volume for files that require one.
 
 ## Planned / In-Progress
 
