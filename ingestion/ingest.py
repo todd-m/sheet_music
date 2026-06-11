@@ -30,8 +30,8 @@ from pathlib import Path
 # Ensure the ingestion package is importable when run as a script.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from parsers.pdf_parser import parse_pdf_index
 from parsers.csv_parser import parse_csv_index
+from parsers.pdf_parser import parse_pdf_index
 
 CATALOG_PATH = Path(__file__).resolve().parent.parent / "catalog.json"
 
@@ -48,7 +48,10 @@ def save_catalog(catalog: dict, path: Path | None = None) -> None:
     path = path or CATALOG_PATH
     with open(path, "w") as f:
         json.dump(catalog, f, indent=2, ensure_ascii=False)
-    print(f"Catalog saved to {path} ({len(catalog['songs'])} songs, {len(catalog['volumes'])} volumes)")
+    print(
+        f"Catalog saved to {path} "
+        f"({len(catalog['songs'])} songs, {len(catalog['volumes'])} volumes)"
+    )
 
 
 def cmd_pdf(args):
@@ -165,11 +168,11 @@ def parse_drive_url(url):
     """Extract driveFileId and optional resourceKey from a Google Drive share link."""
     # Strip shell-escape backslashes (e.g. \? \= \&) that may be passed through.
     url = url.replace("\\", "")
-    file_id_match = re.search(r'/d/([A-Za-z0-9_-]+)', url)
+    file_id_match = re.search(r"/d/([A-Za-z0-9_-]+)", url)
     if not file_id_match:
         raise ValueError(f"Could not extract a file ID from: {url}")
     file_id = file_id_match.group(1)
-    rk_match = re.search(r'resourcekey=([A-Za-z0-9_-]+)', url)
+    rk_match = re.search(r"resourcekey=([A-Za-z0-9_-]+)", url)
     resource_key = rk_match.group(1) if rk_match else None
     return file_id, resource_key
 
@@ -204,12 +207,12 @@ def main():
         description="Ingest song indexes into the sheet music catalog.",
         epilog=(
             "examples:\n"
-            "  python ingest.py pdf --file master-index.pdf --source \"master-index\"\n"
-            "  python ingest.py csv --file extra-songs.csv --source \"manual-csv\"\n"
-            "  python ingest.py remove --source \"master-index\"\n"
+            '  python ingest.py pdf --file master-index.pdf --source "master-index"\n'
+            '  python ingest.py csv --file extra-songs.csv --source "manual-csv"\n'
+            '  python ingest.py remove --source "master-index"\n'
             "  python ingest.py sources\n"
-            "  python ingest.py add-volume --id Realbk1 --name \"The Real Book Vol 1\" \\\n"
-            "      --url \"https://drive.google.com/file/d/1aBcDeFg.../view?...\" --offset 5\n"
+            '  python ingest.py add-volume --id Realbk1 --name "The Real Book Vol 1" \\\n'
+            '      --url "https://drive.google.com/file/d/1aBcDeFg.../view?..." --offset 5\n'
             "\n"
             "use '<command> -h' for more details on each subcommand."
         ),
@@ -222,20 +225,32 @@ def main():
     p_pdf.add_argument("--file", required=True, help="Path to the index PDF")
     p_pdf.add_argument("--source", required=True, help="Source tag for these entries")
     p_pdf.add_argument("--pages", help="Page range to parse, e.g. '1-69'")
-    p_pdf.add_argument("--replace", action="store_true",
-                       help="Remove existing entries from this source before adding")
-    p_pdf.add_argument("--dry-run", action="store_true",
-                       help="Preview extracted entries without saving")
+    p_pdf.add_argument(
+        "--replace",
+        action="store_true",
+        help="Remove existing entries from this source before adding",
+    )
+    p_pdf.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Preview extracted entries without saving",
+    )
     p_pdf.set_defaults(func=cmd_pdf)
 
     # csv
     p_csv = sub.add_parser("csv", help="Parse a CSV file")
     p_csv.add_argument("--file", required=True, help="Path to the CSV file")
     p_csv.add_argument("--source", required=True, help="Source tag for these entries")
-    p_csv.add_argument("--replace", action="store_true",
-                       help="Remove existing entries from this source before adding")
-    p_csv.add_argument("--dry-run", action="store_true",
-                       help="Preview extracted entries without saving")
+    p_csv.add_argument(
+        "--replace",
+        action="store_true",
+        help="Remove existing entries from this source before adding",
+    )
+    p_csv.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Preview extracted entries without saving",
+    )
     p_csv.set_defaults(func=cmd_csv)
 
     # remove

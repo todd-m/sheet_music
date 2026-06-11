@@ -1,7 +1,8 @@
 """Tests for the Google Drive zip-file download endpoint (routers/drive_file)."""
 
-import pytest
 from unittest.mock import MagicMock, patch
+
+import pytest
 from fastapi.testclient import TestClient
 from googleapiclient.errors import HttpError
 
@@ -51,16 +52,21 @@ def _make_downloader(chunks: list[bytes]):
 
 
 class TestDriveFileEndpoint:
-
     def test_successful_download(self):
         """Returns 200, application/zip, and the file bytes."""
         fake_zip = b"PK\x03\x04fake zip content"
         service = _make_service("hot dog stand.zip")
 
-        with _patch_key_exists(), \
-             patch("routers.drive_file._build_drive_service", return_value=service), \
-             patch("routers.drive_file.MediaIoBaseDownload", side_effect=_make_downloader([fake_zip])):
+        with (
+            _patch_key_exists(),
+            patch("routers.drive_file._build_drive_service", return_value=service),
+            patch(
+                "routers.drive_file.MediaIoBaseDownload",
+                side_effect=_make_downloader([fake_zip]),
+            ),
+        ):
             from server import app
+
             resp = TestClient(app).get("/drive/file")
 
         assert resp.status_code == 200
@@ -71,10 +77,16 @@ class TestDriveFileEndpoint:
         """Content-Disposition attachment filename comes from the Drive list result."""
         service = _make_service("hot dog stand.zip")
 
-        with _patch_key_exists(), \
-             patch("routers.drive_file._build_drive_service", return_value=service), \
-             patch("routers.drive_file.MediaIoBaseDownload", side_effect=_make_downloader([b""])):
+        with (
+            _patch_key_exists(),
+            patch("routers.drive_file._build_drive_service", return_value=service),
+            patch(
+                "routers.drive_file.MediaIoBaseDownload",
+                side_effect=_make_downloader([b""]),
+            ),
+        ):
             from server import app
+
             resp = TestClient(app).get("/drive/file")
 
         assert "attachment" in resp.headers["content-disposition"]
@@ -84,6 +96,7 @@ class TestDriveFileEndpoint:
         """When credentials.json is absent, returns 503 before touching Drive."""
         with _patch_key_exists(exists=False):
             from server import app
+
             resp = TestClient(app).get("/drive/file")
 
         assert resp.status_code == 503
@@ -93,9 +106,12 @@ class TestDriveFileEndpoint:
         service = MagicMock()
         service.files.return_value.list.return_value.execute.return_value = {"files": []}
 
-        with _patch_key_exists(), \
-             patch("routers.drive_file._build_drive_service", return_value=service):
+        with (
+            _patch_key_exists(),
+            patch("routers.drive_file._build_drive_service", return_value=service),
+        ):
             from server import app
+
             resp = TestClient(app).get("/drive/file")
 
         assert resp.status_code == 404
@@ -106,9 +122,12 @@ class TestDriveFileEndpoint:
         service = MagicMock()
         service.files.return_value.list.return_value.execute.side_effect = _make_http_error(403)
 
-        with _patch_key_exists(), \
-             patch("routers.drive_file._build_drive_service", return_value=service):
+        with (
+            _patch_key_exists(),
+            patch("routers.drive_file._build_drive_service", return_value=service),
+        ):
             from server import app
+
             resp = TestClient(app).get("/drive/file")
 
         assert resp.status_code == 502
@@ -119,10 +138,16 @@ class TestDriveFileEndpoint:
         chunk2 = b"second_part"
         service = _make_service("hot dog stand.zip")
 
-        with _patch_key_exists(), \
-             patch("routers.drive_file._build_drive_service", return_value=service), \
-             patch("routers.drive_file.MediaIoBaseDownload", side_effect=_make_downloader([chunk1, chunk2])):
+        with (
+            _patch_key_exists(),
+            patch("routers.drive_file._build_drive_service", return_value=service),
+            patch(
+                "routers.drive_file.MediaIoBaseDownload",
+                side_effect=_make_downloader([chunk1, chunk2]),
+            ),
+        ):
             from server import app
+
             resp = TestClient(app).get("/drive/file")
 
         assert resp.status_code == 200
@@ -132,10 +157,16 @@ class TestDriveFileEndpoint:
         """The file ID from the list result is what gets passed to get_media."""
         service = _make_service(file_id="the_real_id_456")
 
-        with _patch_key_exists(), \
-             patch("routers.drive_file._build_drive_service", return_value=service), \
-             patch("routers.drive_file.MediaIoBaseDownload", side_effect=_make_downloader([b""])):
+        with (
+            _patch_key_exists(),
+            patch("routers.drive_file._build_drive_service", return_value=service),
+            patch(
+                "routers.drive_file.MediaIoBaseDownload",
+                side_effect=_make_downloader([b""]),
+            ),
+        ):
             from server import app
+
             TestClient(app).get("/drive/file")
 
         service.files.return_value.get_media.assert_called_once_with(fileId="the_real_id_456")
@@ -153,11 +184,17 @@ class TestDriveFileEndpoint:
 
         service.files.return_value.list = capturing_list
 
-        with _patch_key_exists(), \
-             patch("routers.drive_file._build_drive_service", return_value=service), \
-             patch("routers.drive_file.FOLDER_ID", "folder_abc"), \
-             patch("routers.drive_file.MediaIoBaseDownload", side_effect=_make_downloader([b""])):
+        with (
+            _patch_key_exists(),
+            patch("routers.drive_file._build_drive_service", return_value=service),
+            patch("routers.drive_file.FOLDER_ID", "folder_abc"),
+            patch(
+                "routers.drive_file.MediaIoBaseDownload",
+                side_effect=_make_downloader([b""]),
+            ),
+        ):
             from server import app
+
             TestClient(app).get("/drive/file")
 
         assert "folder_abc" in captured["q"]
@@ -172,9 +209,14 @@ class TestDriveFileEndpoint:
             mock.next_chunk.side_effect = _make_http_error(500)
             return mock
 
-        with _patch_key_exists(), \
-             patch("routers.drive_file._build_drive_service", return_value=service), \
-             patch("routers.drive_file.MediaIoBaseDownload", side_effect=bad_downloader):
+        with (
+            _patch_key_exists(),
+            patch("routers.drive_file._build_drive_service", return_value=service),
+            patch("routers.drive_file.MediaIoBaseDownload", side_effect=bad_downloader),
+        ):
             from server import app
-            with pytest.raises(Exception):
+
+            # The HttpError surfaces mid-stream, after headers are sent; starlette
+            # converts the resulting HTTPException into this RuntimeError.
+            with pytest.raises(RuntimeError, match="response already started"):
                 TestClient(app).get("/drive/file")

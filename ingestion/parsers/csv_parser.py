@@ -67,11 +67,10 @@ def parse_csv_index(
         missing = required - found
         if missing:
             raise ValueError(
-                f"CSV is missing required columns: {missing}. "
-                f"Found: {list(field_map.keys())}"
+                f"CSV is missing required columns: {missing}. Found: {list(field_map.keys())}"
             )
 
-        for row_num, row in enumerate(reader, start=2):
+        for _row_num, row in enumerate(reader, start=2):
             mapped = {field_map[k]: v.strip() for k, v in row.items() if k in field_map}
 
             title = mapped.get("title", "").strip()
@@ -86,13 +85,15 @@ def parse_csv_index(
             except ValueError:
                 continue
 
-            entries.append({
-                "title": title,
-                "composer": mapped.get("composer") or None,
-                "arranger": mapped.get("arranger") or None,
-                "volumeId": volume_id,
-                "nominalPage": nominal_page,
-                "source": source_tag,
-            })
+            entries.append(
+                {
+                    "title": title,
+                    "composer": mapped.get("composer") or None,
+                    "arranger": mapped.get("arranger") or None,
+                    "volumeId": volume_id,
+                    "nominalPage": nominal_page,
+                    "source": source_tag,
+                }
+            )
 
     return entries

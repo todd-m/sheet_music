@@ -5,17 +5,25 @@ All catalog I/O is mocked — no filesystem access.
 
 import copy
 import json
+import sys
 from argparse import Namespace
-from unittest.mock import patch, MagicMock
+from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 import pytest
 
-import sys
-from pathlib import Path
-
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "ingestion"))
 
-from ingest import load_catalog, save_catalog, cmd_remove, cmd_sources, cmd_add_volume, cmd_csv, cmd_pdf, parse_drive_url
+from ingest import (
+    cmd_add_volume,
+    cmd_csv,
+    cmd_pdf,
+    cmd_remove,
+    cmd_sources,
+    load_catalog,
+    parse_drive_url,
+    save_catalog,
+)
 
 
 def _mock_catalog_io(catalog_data: dict):
@@ -39,6 +47,7 @@ def _mock_catalog_io(catalog_data: dict):
 
 
 # ── load / save ──
+
 
 class TestLoadSave:
     def test_load_existing(self):
@@ -70,6 +79,7 @@ class TestLoadSave:
 
 # ── cmd_remove ──
 
+
 class TestCmdRemove:
     def test_removes_matching_source(self, sample_catalog):
         args = Namespace(source="master-index")
@@ -86,6 +96,7 @@ class TestCmdRemove:
 
 
 # ── cmd_sources ──
+
 
 class TestCmdSources:
     def test_lists_sources(self, sample_catalog, capsys):
@@ -105,6 +116,7 @@ class TestCmdSources:
 
 
 # ── cmd_add_volume ──
+
 
 class TestParseDriveUrl:
     def test_extracts_file_id_and_resource_key(self):
@@ -170,17 +182,32 @@ class TestCmdAddVolume:
 
 # ── cmd_csv ──
 
+
 class TestCmdCsv:
     def test_ingest_csv(self, empty_catalog):
         fake_entries = [
-            {"title": "My Song", "composer": None, "arranger": None,
-             "volumeId": "Vol1", "nominalPage": 10, "source": "csv-test"},
-            {"title": "Another", "composer": None, "arranger": None,
-             "volumeId": "Vol2", "nominalPage": 20, "source": "csv-test"},
+            {
+                "title": "My Song",
+                "composer": None,
+                "arranger": None,
+                "volumeId": "Vol1",
+                "nominalPage": 10,
+                "source": "csv-test",
+            },
+            {
+                "title": "Another",
+                "composer": None,
+                "arranger": None,
+                "volumeId": "Vol2",
+                "nominalPage": 20,
+                "source": "csv-test",
+            },
         ]
         args = Namespace(file="fake.csv", source="csv-test", replace=False, dry_run=False)
-        with _mock_catalog_io(empty_catalog), \
-             patch("ingest.parse_csv_index", return_value=fake_entries):
+        with (
+            _mock_catalog_io(empty_catalog),
+            patch("ingest.parse_csv_index", return_value=fake_entries),
+        ):
             cmd_csv(args)
         assert len(empty_catalog["songs"]) == 2
         assert empty_catalog["songs"][0]["title"] == "My Song"
@@ -192,25 +219,41 @@ class TestCmdCsv:
             {"title": "My Song", "volumeId": "Vol1", "nominalPage": 10},
         ]
         args = Namespace(file="fake.csv", source="csv-test", replace=False, dry_run=True)
-        with _mock_catalog_io(empty_catalog), \
-             patch("ingest.parse_csv_index", return_value=fake_entries):
+        with (
+            _mock_catalog_io(empty_catalog),
+            patch("ingest.parse_csv_index", return_value=fake_entries),
+        ):
             cmd_csv(args)
         assert len(empty_catalog["songs"]) == 0  # unchanged
 
     def test_csv_replace_removes_old(self, sample_catalog):
         # Add an entry with source "csv-replace" to the starting catalog
-        sample_catalog["songs"].append({
-            "title": "Old Song", "composer": None, "arranger": None,
-            "volumeId": "Realbk1", "nominalPage": 99,
-            "source": "csv-replace", "addedAt": "2026-01-01",
-        })
+        sample_catalog["songs"].append(
+            {
+                "title": "Old Song",
+                "composer": None,
+                "arranger": None,
+                "volumeId": "Realbk1",
+                "nominalPage": 99,
+                "source": "csv-replace",
+                "addedAt": "2026-01-01",
+            }
+        )
         fake_entries = [
-            {"title": "Replacement Song", "composer": None, "arranger": None,
-             "volumeId": "Realbk1", "nominalPage": 50, "source": "csv-replace"},
+            {
+                "title": "Replacement Song",
+                "composer": None,
+                "arranger": None,
+                "volumeId": "Realbk1",
+                "nominalPage": 50,
+                "source": "csv-replace",
+            },
         ]
         args = Namespace(file="fake.csv", source="csv-replace", replace=True, dry_run=False)
-        with _mock_catalog_io(sample_catalog), \
-             patch("ingest.parse_csv_index", return_value=fake_entries):
+        with (
+            _mock_catalog_io(sample_catalog),
+            patch("ingest.parse_csv_index", return_value=fake_entries),
+        ):
             cmd_csv(args)
         # 3 original + 1 csv-replace removed + 1 replacement added = 4
         assert len(sample_catalog["songs"]) == 4
@@ -220,29 +263,54 @@ class TestCmdCsv:
 
     def test_csv_appends_to_existing(self, sample_catalog):
         fake_entries = [
-            {"title": "Extra Song", "composer": None, "arranger": None,
-             "volumeId": "NewVol", "nominalPage": 1, "source": "extra"},
+            {
+                "title": "Extra Song",
+                "composer": None,
+                "arranger": None,
+                "volumeId": "NewVol",
+                "nominalPage": 1,
+                "source": "extra",
+            },
         ]
         args = Namespace(file="fake.csv", source="extra", replace=False, dry_run=False)
-        with _mock_catalog_io(sample_catalog), \
-             patch("ingest.parse_csv_index", return_value=fake_entries):
+        with (
+            _mock_catalog_io(sample_catalog),
+            patch("ingest.parse_csv_index", return_value=fake_entries),
+        ):
             cmd_csv(args)
         assert len(sample_catalog["songs"]) == 4
 
 
 # ── cmd_pdf ──
 
+
 class TestCmdPdf:
     def test_ingest_pdf_with_mock(self, empty_catalog):
         fake_entries = [
-            {"title": "Song A", "composer": None, "arranger": None,
-             "volumeId": "Realbk1", "nominalPage": 10, "source": "test-pdf"},
-            {"title": "Song B", "composer": None, "arranger": None,
-             "volumeId": "JazzFake", "nominalPage": 20, "source": "test-pdf"},
+            {
+                "title": "Song A",
+                "composer": None,
+                "arranger": None,
+                "volumeId": "Realbk1",
+                "nominalPage": 10,
+                "source": "test-pdf",
+            },
+            {
+                "title": "Song B",
+                "composer": None,
+                "arranger": None,
+                "volumeId": "JazzFake",
+                "nominalPage": 20,
+                "source": "test-pdf",
+            },
         ]
-        args = Namespace(file="fake.pdf", source="test-pdf", pages=None, replace=False, dry_run=False)
-        with _mock_catalog_io(empty_catalog), \
-             patch("ingest.parse_pdf_index", return_value=fake_entries):
+        args = Namespace(
+            file="fake.pdf", source="test-pdf", pages=None, replace=False, dry_run=False
+        )
+        with (
+            _mock_catalog_io(empty_catalog),
+            patch("ingest.parse_pdf_index", return_value=fake_entries),
+        ):
             cmd_pdf(args)
         assert len(empty_catalog["songs"]) == 2
         assert "Realbk1" in empty_catalog["volumes"]
@@ -253,26 +321,44 @@ class TestCmdPdf:
             {"title": "Song A", "volumeId": "Vol1", "nominalPage": 10},
         ]
         args = Namespace(file="fake.pdf", source="test", pages=None, replace=False, dry_run=True)
-        with _mock_catalog_io(empty_catalog), \
-             patch("ingest.parse_pdf_index", return_value=fake_entries):
+        with (
+            _mock_catalog_io(empty_catalog),
+            patch("ingest.parse_pdf_index", return_value=fake_entries),
+        ):
             cmd_pdf(args)
         assert len(empty_catalog["songs"]) == 0
 
     def test_pdf_page_range_parsing(self, empty_catalog):
         args = Namespace(file="fake.pdf", source="test", pages="2-5", replace=False, dry_run=False)
-        with _mock_catalog_io(empty_catalog), \
-             patch("ingest.parse_pdf_index", return_value=[]) as mock_parse:
+        with (
+            _mock_catalog_io(empty_catalog),
+            patch("ingest.parse_pdf_index", return_value=[]) as mock_parse,
+        ):
             cmd_pdf(args)
         mock_parse.assert_called_once_with("fake.pdf", "test", (2, 5))
 
     def test_pdf_replace(self, sample_catalog):
         fake_entries = [
-            {"title": "Replaced Song", "composer": None, "arranger": None,
-             "volumeId": "Realbk1", "nominalPage": 1, "source": "master-index"},
+            {
+                "title": "Replaced Song",
+                "composer": None,
+                "arranger": None,
+                "volumeId": "Realbk1",
+                "nominalPage": 1,
+                "source": "master-index",
+            },
         ]
-        args = Namespace(file="fake.pdf", source="master-index", pages=None, replace=True, dry_run=False)
-        with _mock_catalog_io(sample_catalog), \
-             patch("ingest.parse_pdf_index", return_value=fake_entries):
+        args = Namespace(
+            file="fake.pdf",
+            source="master-index",
+            pages=None,
+            replace=True,
+            dry_run=False,
+        )
+        with (
+            _mock_catalog_io(sample_catalog),
+            patch("ingest.parse_pdf_index", return_value=fake_entries),
+        ):
             cmd_pdf(args)
         # 2 master-index songs removed, 1 added, 1 other-source retained
         assert len(sample_catalog["songs"]) == 2

@@ -10,7 +10,6 @@ from pathlib import Path
 
 import pdfplumber
 
-
 # Lines matching these patterns are headers/noise — skip them.
 SKIP_PATTERNS = [
     re.compile(r"master\s+index", re.IGNORECASE),
@@ -35,9 +34,6 @@ def _extract_lines_with_positions(page) -> list[dict]:
     chars = page.chars
     if not chars:
         return []
-
-    # Determine page width for column heuristics
-    page_width = float(page.width)
 
     # Group characters by approximate y-position (same line).
     # Characters within 2 pts of y are considered same line.
@@ -84,11 +80,13 @@ def _extract_lines_with_positions(page) -> list[dict]:
         for tok_chars in tokens:
             text = "".join(c["text"] for c in tok_chars).strip()
             if text:
-                token_info.append({
-                    "text": text,
-                    "x0": tok_chars[0]["x0"],
-                    "x1": tok_chars[-1]["x1"],
-                })
+                token_info.append(
+                    {
+                        "text": text,
+                        "x0": tok_chars[0]["x0"],
+                        "x1": tok_chars[-1]["x1"],
+                    }
+                )
 
         if not token_info:
             continue
@@ -133,11 +131,13 @@ def _extract_lines_with_positions(page) -> list[dict]:
             book = " ".join(t["text"] for t in book_tokens)
 
         if title and page_num is not None:
-            results.append({
-                "title": title.strip(),
-                "book": book.strip(),
-                "nominalPage": page_num,
-            })
+            results.append(
+                {
+                    "title": title.strip(),
+                    "book": book.strip(),
+                    "nominalPage": page_num,
+                }
+            )
 
     return results
 
@@ -170,13 +170,15 @@ def parse_pdf_index(
         for page in pages:
             lines = _extract_lines_with_positions(page)
             for line in lines:
-                entries.append({
-                    "title": line["title"],
-                    "composer": None,
-                    "arranger": None,
-                    "volumeId": line["book"],
-                    "nominalPage": line["nominalPage"],
-                    "source": source_tag,
-                })
+                entries.append(
+                    {
+                        "title": line["title"],
+                        "composer": None,
+                        "arranger": None,
+                        "volumeId": line["book"],
+                        "nominalPage": line["nominalPage"],
+                        "source": source_tag,
+                    }
+                )
 
     return entries

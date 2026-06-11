@@ -1,11 +1,11 @@
 /**
- * Client-side JS tests using Node's built-in test runner + jsdom.
+ * Client-side JS tests using Vitest + jsdom.
  *
- * Run: node --test tests/test_client.js
+ * Run: npx vitest run
  *   or: make test-js
  */
 
-import { describe, it, beforeEach } from 'node:test';
+import { describe, it, beforeEach } from 'vitest';
 import assert from 'node:assert/strict';
 import { JSDOM } from 'jsdom';
 import { readFileSync } from 'node:fs';

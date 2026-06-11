@@ -1,5 +1,5 @@
 PYTHON  ?= python3
-VENV    := env
+VENV    := .venv
 BIN     := $(VENV)/bin
 PORT    ?= 7001
 
@@ -14,6 +14,7 @@ venv: ## Create a virtual environment
 
 install: venv ## Install project dependencies
 	$(BIN)/pip install -r requirements.txt
+	npm ci
 
 install-ingestion: install ## Install ingestion-specific dependencies
 	$(BIN)/pip install -r ingestion/requirements.txt
@@ -24,10 +25,11 @@ test-py: ## Run Python tests
 	$(BIN)/python -m pytest
 
 test-js: ## Run client-side JS tests
-	node --test tests/test_client.js
+	npx vitest run
 
 audit: ## Scan dependencies for known vulnerabilities
 	$(BIN)/pip-audit -r requirements.txt
+	npm audit --omit=dev --audit-level=high
 
 check-cdn: ## Verify PDF.js CDN URLs in app/index.html are reachable
 	@grep -oE 'https://cdn\.jsdelivr\.net/npm/pdfjs-dist@[a-zA-Z0-9./_-]+' app/index.html | sort -u | while read url; do \
@@ -35,14 +37,15 @@ check-cdn: ## Verify PDF.js CDN URLs in app/index.html are reachable
 		curl -fsI "$$url" > /dev/null && echo "ok" || { echo "FAILED"; exit 1; }; \
 	done
 
-ci: test audit check-cdn ## Run tests, security audit, and CDN URL liveness check
+ci: test lint audit check-cdn ## Run tests, lint, security audit, and CDN URL liveness check
 
-lint: ## Run ruff linter (if installed)
-	$(BIN)/python -m ruff check .
+lint: ## Run ruff lint + format check
+	$(BIN)/ruff check .
+	$(BIN)/ruff format --check .
 
 serve: ## Start the dev server (PORT=7001, all interfaces)
 	$(BIN)/uvicorn server:app --reload --host 0.0.0.0 --port $(PORT)
 
 clean: ## Remove virtual env and caches
-	rm -rf $(VENV) __pycache__ .pytest_cache
+	rm -rf $(VENV) __pycache__ .pytest_cache .ruff_cache .coverage
 	find . -type d -name __pycache__ -exec rm -rf {} +

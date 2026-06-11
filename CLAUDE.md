@@ -6,6 +6,7 @@ Auto-loaded by Claude Code at session start. `README.md` has the stable architec
 
 Most recent first; sourced from `git log`.
 
+- **Standards alignment pass** *(uncommitted)* — adopted `~/Projects/standards/STANDARDS.md`: venv renamed `env` → `.venv`, deps repinned with `~=` in `requirements.txt` (+ `ruff`, `pytest-cov`), ruff lint/format applied repo-wide (config in `pyproject.toml`), pytest coverage gate `--cov-fail-under=80` (currently 86%), JS tests migrated `node --test` → Vitest, `make lint` wired into `make ci`, GitHub Actions workflow added (`.github/workflows/ci.yml`).
 - **`make check-cdn`** *(uncommitted)* — Makefile target that grep-extracts the pinned PDF.js CDN URLs from `app/index.html` and HEAD-checks they're reachable; wired into `make ci`. Catches 404s on the pinned URLs (would have caught the v3 `.mjs` mistake); does not catch iOS-engine compatibility regressions.
 - **Legacy iOS 15 PDF viewer fix** (7037acd) — PDF.js pinned to v3.11.174 legacy UMD and loaded via a classic `<script>` tag in `loadPdfJs()`, replacing the v4 ESM dynamic import that broke on older iPads (Safari 15). See gotcha below.
 - **`make ci` / `make audit`** (2ff29ce) — Makefile targets for pip-audit vulnerability scanning.
@@ -28,5 +29,7 @@ Nothing actively tracked in the repo.
 - **WebKit-sensitive `<script>` order in `app/index.html`** — search results silently failed on Safari before commit 4781dff because of script declare order. When adding scripts, verify Safari/WebKit behaviour, not just Chrome/Firefox.
 - **PDF parser uses character position data**, not whitespace splitting (`ingestion/parsers/pdf_parser.py`). Multi-word titles like "All Of Me" depend on this. Don't refactor to naive `.split()`.
 - **Two Drive auth modes**: service account via `credentials.json` (preferred for private files) or public links + `resourceKey` (fallback). The server auto-detects which at startup. `credentials.json` is gitignored.
-- **Tests**: `make test` runs Python (pytest) and JS (`node --test`) together. JS tests need `npm install` first to pull jsdom.
+- **Tests**: `make test` runs Python (pytest, with an 80% coverage gate from `pyproject.toml`) and JS (Vitest) together. JS tests need `npm ci` first (jsdom + vitest). The JS suite runs in Vitest's `node` environment because it builds its own JSDOM and loads `app/lib.js` via a data-URL import — which is also why there's no JS coverage gate (istanbul can't instrument data-URL modules).
+- **Lint**: `make lint` = `ruff check` + `ruff format --check`; config lives in `pyproject.toml` (line-length 100). Part of `make ci`.
+- **Venv is `.venv`** (per `~/Projects/standards/STANDARDS.md`); a stale `env/` dir may exist locally until removed.
 - **`catalog.json` is hand-editable** — page-offset formula is `actual_pdf_page = nominalPage + pageOffset`.

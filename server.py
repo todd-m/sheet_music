@@ -50,12 +50,17 @@ def _load_credentials():
     global _credentials
     if SERVICE_ACCOUNT_KEY_PATH.exists():
         from google.oauth2 import service_account
+
         _credentials = service_account.Credentials.from_service_account_file(
-            str(SERVICE_ACCOUNT_KEY_PATH), scopes=SCOPES,
+            str(SERVICE_ACCOUNT_KEY_PATH),
+            scopes=SCOPES,
         )
         log.info("Loaded service account credentials from %s", SERVICE_ACCOUNT_KEY_PATH)
     else:
-        log.info("No service account key at %s — using public download URLs", SERVICE_ACCOUNT_KEY_PATH)
+        log.info(
+            "No service account key at %s — using public download URLs",
+            SERVICE_ACCOUNT_KEY_PATH,
+        )
 
 
 _load_credentials()
@@ -67,6 +72,7 @@ def _get_auth_header() -> dict[str, str]:
         return {}
     if not _credentials.valid:
         from google.auth.transport.requests import Request
+
         _credentials.refresh(Request())
     return {"Authorization": f"Bearer {_credentials.token}"}
 
@@ -103,7 +109,8 @@ async def _proxy_pdf_authenticated(drive_file_id: str):
 
     if resp.status_code == 404:
         raise HTTPException(
-            404, "File not found — check the file ID and that it's shared with the service account",
+            404,
+            "File not found — check the file ID and that it's shared with the service account",
         )
     if resp.status_code != 200:
         raise HTTPException(502, f"Drive API error (status {resp.status_code})")
@@ -135,7 +142,7 @@ async def _proxy_pdf_public(drive_file_id: str, resourcekey: str | None = None):
     content_type = resp.headers.get("content-type", "")
     if "html" in content_type:
         # Google may return an HTML "confirm download" page for large files.
-        match = re.search(r'confirm=([0-9A-Za-z_-]+)', resp.text)
+        match = re.search(r"confirm=([0-9A-Za-z_-]+)", resp.text)
         if match:
             confirm_url = f"{url}&confirm={match.group(1)}"
             async with httpx.AsyncClient(follow_redirects=True, timeout=60.0) as client:
@@ -143,7 +150,10 @@ async def _proxy_pdf_public(drive_file_id: str, resourcekey: str | None = None):
             if resp.status_code != 200:
                 raise HTTPException(502, "Failed to fetch PDF after confirmation")
         else:
-            raise HTTPException(502, "Drive returned HTML instead of PDF — file may not be shared publicly")
+            raise HTTPException(
+                502,
+                "Drive returned HTML instead of PDF — file may not be shared publicly",
+            )
 
     return StreamingResponse(
         iter([resp.content]),

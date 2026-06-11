@@ -47,19 +47,24 @@ def _resolve_file(service) -> dict:
         q += f" and '{FOLDER_ID}' in parents"
 
     try:
-        results = service.files().list(
-            q=q,
-            fields="files(id, name)",
-            pageSize=1,
-        ).execute()
+        results = (
+            service.files()
+            .list(
+                q=q,
+                fields="files(id, name)",
+                pageSize=1,
+            )
+            .execute()
+        )
     except HttpError as e:
-        raise HTTPException(502, f"Drive API error resolving file name ({e.status_code})")
+        raise HTTPException(502, f"Drive API error resolving file name ({e.status_code})") from e
 
     files = results.get("files", [])
     if not files:
         raise HTTPException(
             404,
-            f"No Drive file named '{FILE_NAME}' found — check FILE_NAME and that it is shared with the service account",
+            f"No Drive file named '{FILE_NAME}' found — "
+            f"check FILE_NAME and that it is shared with the service account",
         )
 
     return files[0]
@@ -91,8 +96,8 @@ def download_drive_file():
                 yield chunk
         except HttpError as e:
             if e.status_code == 404:
-                raise HTTPException(404, "File not found during download")
-            raise HTTPException(502, f"Drive API error during download ({e.status_code})")
+                raise HTTPException(404, "File not found during download") from e
+            raise HTTPException(502, f"Drive API error during download ({e.status_code})") from e
 
     return StreamingResponse(
         _iter_chunks(),

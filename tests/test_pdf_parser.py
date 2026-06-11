@@ -5,25 +5,31 @@ positional data, matching the structure pdfplumber provides.
 """
 
 import pytest
-from parsers.pdf_parser import _is_skip_line, _extract_lines_with_positions
-
+from parsers.pdf_parser import _extract_lines_with_positions, _is_skip_line
 
 # ── Skip-line detection ──
 
+
 class TestIsSkipLine:
-    @pytest.mark.parametrize("text", [
-        "Master Index",
-        "  MASTER  INDEX  ",
-        "master index",
-    ])
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "Master Index",
+            "  MASTER  INDEX  ",
+            "master index",
+        ],
+    )
     def test_skips_master_index(self, text):
         assert _is_skip_line(text) is True
 
-    @pytest.mark.parametrize("text", [
-        "Title                Book             Page",
-        "  title   volume  page  ",
-        "Song Title           Source          Page",
-    ])
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "Title                Book             Page",
+            "  title   volume  page  ",
+            "Song Title           Source          Page",
+        ],
+    )
     def test_skips_header_rows(self, text):
         assert _is_skip_line(text) is True
 
@@ -38,6 +44,7 @@ class TestIsSkipLine:
 
 # ── Fake page helpers ──
 
+
 def _make_char(text: str, x0: float, top: float, char_width: float = 6.0):
     """Create a fake pdfplumber character dict."""
     return {
@@ -48,8 +55,13 @@ def _make_char(text: str, x0: float, top: float, char_width: float = 6.0):
     }
 
 
-def _make_line_chars(text: str, x_start: float, top: float,
-                     char_width: float = 6.0, gap_positions: dict | None = None):
+def _make_line_chars(
+    text: str,
+    x_start: float,
+    top: float,
+    char_width: float = 6.0,
+    gap_positions: dict | None = None,
+):
     """
     Create a list of character dicts for a string, placed sequentially.
 
@@ -68,12 +80,14 @@ def _make_line_chars(text: str, x_start: float, top: float,
 
 class FakePage:
     """Minimal mock of a pdfplumber page."""
+
     def __init__(self, chars, width=612.0):
         self.chars = chars
         self.width = width
 
 
 # ── Line extraction ──
+
 
 class TestExtractLines:
     def test_basic_three_column_line(self):

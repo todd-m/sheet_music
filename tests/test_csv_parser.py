@@ -4,7 +4,7 @@ import io
 from unittest.mock import patch
 
 import pytest
-from parsers.csv_parser import parse_csv_index, _normalize_header
+from parsers.csv_parser import _normalize_header, parse_csv_index
 
 
 def _mock_open_csv(content: str):
@@ -14,28 +14,33 @@ def _mock_open_csv(content: str):
 
 # ── Header normalization ──
 
+
 class TestNormalizeHeader:
-    @pytest.mark.parametrize("raw,expected", [
-        ("Title", "title"),
-        ("SONG", "title"),
-        ("Song Title", "title"),
-        ("song_title", "title"),
-        ("Volume", "volumeId"),
-        ("Book", "volumeId"),
-        ("volumeId", "volumeId"),
-        ("Page", "nominalPage"),
-        ("nominal_page", "nominalPage"),
-        ("page-number", "nominalPage"),
-        ("Composer", "composer"),
-        ("Arranger", "arranger"),
-        ("unknown_col", None),
-        ("", None),
-    ])
+    @pytest.mark.parametrize(
+        "raw,expected",
+        [
+            ("Title", "title"),
+            ("SONG", "title"),
+            ("Song Title", "title"),
+            ("song_title", "title"),
+            ("Volume", "volumeId"),
+            ("Book", "volumeId"),
+            ("volumeId", "volumeId"),
+            ("Page", "nominalPage"),
+            ("nominal_page", "nominalPage"),
+            ("page-number", "nominalPage"),
+            ("Composer", "composer"),
+            ("Arranger", "arranger"),
+            ("unknown_col", None),
+            ("", None),
+        ],
+    )
     def test_aliases(self, raw, expected):
         assert _normalize_header(raw) == expected
 
 
 # ── CSV parsing ──
+
 
 class TestParseCsv:
     def test_basic_three_columns(self):
@@ -51,7 +56,8 @@ class TestParseCsv:
         assert entries[0]["arranger"] is None
 
     def test_with_composer_and_arranger(self):
-        csv_text = "Song,Volume,Page,Composer,Arranger\nMy Funny Valentine,Realbk1,300,Rodgers,Evans\n"
+        header = "Song,Volume,Page,Composer,Arranger\n"
+        csv_text = header + "My Funny Valentine,Realbk1,300,Rodgers,Evans\n"
         with _mock_open_csv(csv_text):
             entries = parse_csv_index("fake.csv", "src")
         assert len(entries) == 1
