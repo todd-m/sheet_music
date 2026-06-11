@@ -19,11 +19,13 @@ Authentication:
 
 import json
 import logging
+import os
 import re
+import secrets
 from pathlib import Path
 
 import httpx
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -39,6 +41,41 @@ SERVICE_ACCOUNT_KEY_PATH = Path(__file__).resolve().parent / "credentials.json"
 DRIVE_API_URL = "https://www.googleapis.com/drive/v3/files"
 DRIVE_PUBLIC_URL = "https://drive.google.com/uc"
 SCOPES = ["https://www.googleapis.com/auth/drive.readonly"]
+
+# ── App auth token (protects content-serving endpoints) ──
+
+TOKEN_PATH = Path(__file__).resolve().parent / "token.txt"
+
+
+def _load_app_token() -> str | None:
+    """Shared app token from the SHEET_MUSIC_TOKEN env var or gitignored token.txt."""
+    token = os.environ.get("SHEET_MUSIC_TOKEN", "").strip()
+    if token:
+        return token
+    if TOKEN_PATH.exists():
+        return TOKEN_PATH.read_text().strip() or None
+    return None
+
+
+def require_token(request: Request, token: str | None = None) -> None:
+    """FastAPI dependency: require the shared app token on protected routes.
+
+    Accepts `Authorization: Bearer <token>` or a `?token=` query parameter.
+    Fails closed: 503 when no token is configured server-side, 401 on a
+    missing or wrong token.
+    """
+    expected = _load_app_token()
+    if not expected:
+        raise HTTPException(
+            503, "Auth token not configured — set SHEET_MUSIC_TOKEN or create token.txt"
+        )
+    supplied = token or ""
+    auth_header = request.headers.get("authorization", "")
+    if auth_header.lower().startswith("bearer "):
+        supplied = auth_header[7:].strip()
+    if not supplied or not secrets.compare_digest(supplied, expected):
+        raise HTTPException(401, "Invalid or missing auth token")
+
 
 # ── Service account credentials (loaded once at import time) ──
 
@@ -84,7 +121,7 @@ async def get_catalog():
     return json.loads(CATALOG_PATH.read_text())
 
 
-@app.get("/api/pdf/{drive_file_id}")
+@app.get("/api/pdf/{drive_file_id}", dependencies=[Depends(require_token)])
 async def proxy_pdf(drive_file_id: str, resourcekey: str | None = None):
     """
     Proxy a PDF from Google Drive to avoid CORS issues.

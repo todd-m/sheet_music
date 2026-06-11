@@ -280,7 +280,7 @@
 </div>
 
 <script type="module">
-  import { searchSongs, escapeHtml, createApp } from './lib.js';
+  import { searchSongs, escapeHtml, createApp, ensureToken, clearToken } from './lib.js';
 
   // ── pdf.js (loaded lazily on first use) ──
   // Pinned to v3.11.174 legacy UMD for iOS 15 / Safari 15 support (older iPads).
@@ -315,6 +315,20 @@
     } catch (e) {
       throw new Error(`Failed to load PDF viewer: ${e.message}`);
     }
+  }
+
+  /**
+   * Load a PDF through pdf.js with the app auth token attached.
+   * Prompts for the token on first use (persisted in localStorage).
+   * Rejects with pdf.js's UnexpectedResponseException (e.status === 401)
+   * when the server rejects the token.
+   */
+  function loadPdfWithAuth(pdfUrl) {
+    const token = ensureToken(() => window.prompt('Library access token:'));
+    return pdfjsLib.getDocument({
+      url: pdfUrl,
+      httpHeaders: token ? { Authorization: `Bearer ${token}` } : {},
+    }).promise;
   }
 
   // ── PDF state (not in lib.js — depends on pdf.js) ──
@@ -370,8 +384,18 @@
         await loadPdfJs();
         let pdfUrl = `/api/pdf/${driveFileId}`;
         if (vol.resourceKey) pdfUrl += `?resourcekey=${encodeURIComponent(vol.resourceKey)}`;
-        const loadingTask = pdfjsLib.getDocument(pdfUrl);
-        const doc = await loadingTask.promise;
+        let doc;
+        try {
+          doc = await loadPdfWithAuth(pdfUrl);
+        } catch (e) {
+          if (e && e.status === 401) {
+            // Stored token missing/stale — clear it and re-prompt once.
+            clearToken();
+            doc = await loadPdfWithAuth(pdfUrl);
+          } else {
+            throw e;
+          }
+        }
         currentPdf = { doc, driveFileId };
       } catch (e) {
         console.error('Failed to load PDF:', e);

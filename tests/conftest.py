@@ -7,6 +7,15 @@ import pytest
 # Make ingestion package importable from tests.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "ingestion"))
 
+TEST_TOKEN = "test-token"
+
+
+@pytest.fixture(autouse=True)
+def app_token(monkeypatch):
+    """Configure the shared app auth token for every test."""
+    monkeypatch.setenv("SHEET_MUSIC_TOKEN", TEST_TOKEN)
+
+
 EMPTY_CATALOG = {"volumes": {}, "songs": []}
 
 SAMPLE_CATALOG = {

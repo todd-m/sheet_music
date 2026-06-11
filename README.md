@@ -47,6 +47,25 @@ The server detects `credentials.json` at startup and uses the Drive API with Bea
 
 If no `credentials.json` is present, the server falls back to fetching PDFs via public download URLs. Each Drive file must be shared as "anyone with the link can view." Some files may also require a `resourceKey`, which is passed via the catalog and forwarded as an `X-Goog-Drive-Resource-Keys` header.
 
+### App Access Token
+
+The content-serving endpoints (`/api/pdf/{id}` and `/drive/file`) require a shared
+access token, since the server typically binds to all interfaces on the LAN. Set it
+one of two ways (both gitignored):
+
+```bash
+export SHEET_MUSIC_TOKEN="some-long-random-string"   # env var, or:
+echo "some-long-random-string" > token.txt           # file in the project root
+```
+
+Generate one with `python3 -c "import secrets; print(secrets.token_urlsafe(24))"`.
+Requests authenticate with an `Authorization: Bearer <token>` header or a
+`?token=<token>` query parameter. The web app prompts for the token the first time
+you open a PDF and remembers it in the browser's localStorage. If no token is
+configured server-side, the protected endpoints refuse all requests (503) —
+they fail closed. The catalog endpoint (song titles only) and the static app
+remain open.
+
 ## How the PDF Parser Works
 
 Instead of splitting lines on whitespace (which breaks for multi-word titles like "All Of Me"), it uses **pdfplumber's character position data**:

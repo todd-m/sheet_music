@@ -69,7 +69,10 @@ async function loadLib() {
       ${libSrc
         .replace(/^export /gm, '')           // strip export keywords
         .replace(/^import .*/gm, '')}        // strip import statements (none expected, but safe)
-      window.__lib = { escapeHtml, escapeRegex, highlightMatch, searchSongs, createApp };
+      window.__lib = {
+        escapeHtml, escapeRegex, highlightMatch, searchSongs, createApp,
+        TOKEN_STORAGE_KEY, getStoredToken, storeToken, clearToken, ensureToken,
+      };
     })();
   `;
   dom.window.eval(wrappedSrc);
@@ -583,5 +586,51 @@ describe('catalog status', () => {
     app.renderResults([], 'autumn');
     dom.window.document.querySelector('.btn-retry').click();
     assert.ok(retryCalled, 'retry should still fire after multiple renderResults calls');
+  });
+});
+
+
+// ═══════════════════════════════════════════
+// Auth token helpers
+// ═══════════════════════════════════════════
+
+describe('auth token helpers', () => {
+  let dom, lib;
+  beforeEach(async () => { ({ dom, lib } = await loadLib()); });
+
+  it('getStoredToken returns empty string when nothing stored', () => {
+    assert.equal(lib.getStoredToken(), '');
+  });
+
+  it('storeToken persists and getStoredToken returns it', () => {
+    lib.storeToken('abc123');
+    assert.equal(lib.getStoredToken(), 'abc123');
+    assert.equal(dom.window.localStorage.getItem(lib.TOKEN_STORAGE_KEY), 'abc123');
+  });
+
+  it('clearToken removes the stored token', () => {
+    lib.storeToken('abc123');
+    lib.clearToken();
+    assert.equal(lib.getStoredToken(), '');
+  });
+
+  it('ensureToken returns stored token without prompting', () => {
+    lib.storeToken('stored-token');
+    let prompted = false;
+    const token = lib.ensureToken(() => { prompted = true; return 'from-prompt'; });
+    assert.equal(token, 'stored-token');
+    assert.equal(prompted, false);
+  });
+
+  it('ensureToken prompts when nothing stored and persists the answer', () => {
+    const token = lib.ensureToken(() => '  prompted-token  ');
+    assert.equal(token, 'prompted-token');           // trimmed
+    assert.equal(lib.getStoredToken(), 'prompted-token');  // persisted
+  });
+
+  it('ensureToken returns empty string and stores nothing on cancelled prompt', () => {
+    const token = lib.ensureToken(() => null);       // window.prompt returns null on cancel
+    assert.equal(token, '');
+    assert.equal(lib.getStoredToken(), '');
   });
 });

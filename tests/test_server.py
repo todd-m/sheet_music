@@ -5,6 +5,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi.testclient import TestClient
 
+from .conftest import TEST_TOKEN
+
+AUTH = {"Authorization": f"Bearer {TEST_TOKEN}"}
+
 # ── Catalog endpoint ──
 
 
@@ -16,7 +20,7 @@ class TestCatalogEndpoint:
         with patch("server.CATALOG_PATH", mock_path):
             from server import app
 
-            client = TestClient(app)
+            client = TestClient(app, headers=AUTH)
             resp = client.get("/api/catalog")
         assert resp.status_code == 200
         data = resp.json()
@@ -31,7 +35,7 @@ class TestCatalogEndpoint:
         with patch("server.CATALOG_PATH", mock_path):
             from server import app
 
-            client = TestClient(app)
+            client = TestClient(app, headers=AUTH)
             resp = client.get("/api/catalog")
         data = resp.json()
         assert data["volumes"]["Realbk1"]["resourceKey"] == "rk-test-456"
@@ -42,7 +46,7 @@ class TestCatalogEndpoint:
         with patch("server.CATALOG_PATH", mock_path):
             from server import app
 
-            client = TestClient(app)
+            client = TestClient(app, headers=AUTH)
             resp = client.get("/api/catalog")
         assert resp.status_code == 404
 
@@ -74,7 +78,7 @@ class TestPdfProxyPublic:
         ):
             from server import app
 
-            client = TestClient(app)
+            client = TestClient(app, headers=AUTH)
             resp = client.get("/api/pdf/test_file_id")
 
         assert resp.status_code == 200
@@ -106,7 +110,7 @@ class TestPdfProxyPublic:
         ):
             from server import app
 
-            client = TestClient(app)
+            client = TestClient(app, headers=AUTH)
             resp = client.get("/api/pdf/file123?resourcekey=rk-abc")
 
         assert resp.status_code == 200
@@ -137,7 +141,7 @@ class TestPdfProxyPublic:
         ):
             from server import app
 
-            client = TestClient(app)
+            client = TestClient(app, headers=AUTH)
             resp = client.get("/api/pdf/file123")
 
         assert resp.status_code == 200
@@ -159,7 +163,7 @@ class TestPdfProxyPublic:
         ):
             from server import app
 
-            client = TestClient(app)
+            client = TestClient(app, headers=AUTH)
             resp = client.get("/api/pdf/bad_id")
 
         assert resp.status_code == 502
@@ -182,7 +186,7 @@ class TestPdfProxyPublic:
         ):
             from server import app
 
-            client = TestClient(app)
+            client = TestClient(app, headers=AUTH)
             resp = client.get("/api/pdf/some_id")
 
         assert resp.status_code == 502
@@ -220,7 +224,7 @@ class TestPdfProxyPublic:
         ):
             from server import app
 
-            client = TestClient(app)
+            client = TestClient(app, headers=AUTH)
             resp = client.get("/api/pdf/large_file_id")
 
         assert resp.status_code == 200
@@ -264,7 +268,7 @@ class TestPdfProxyAuthenticated:
         ):
             from server import app
 
-            client = TestClient(app)
+            client = TestClient(app, headers=AUTH)
             resp = client.get("/api/pdf/file123")
 
         assert resp.status_code == 200
@@ -295,7 +299,7 @@ class TestPdfProxyAuthenticated:
         ):
             from server import app
 
-            client = TestClient(app)
+            client = TestClient(app, headers=AUTH)
             resp = client.get("/api/pdf/file123?resourcekey=rk-abc")
 
         assert resp.status_code == 200
@@ -317,7 +321,7 @@ class TestPdfProxyAuthenticated:
         ):
             from server import app
 
-            client = TestClient(app)
+            client = TestClient(app, headers=AUTH)
             resp = client.get("/api/pdf/bad_id")
 
         assert resp.status_code == 404
@@ -339,7 +343,7 @@ class TestPdfProxyAuthenticated:
         ):
             from server import app
 
-            client = TestClient(app)
+            client = TestClient(app, headers=AUTH)
             resp = client.get("/api/pdf/file123")
 
         assert resp.status_code == 502
@@ -370,8 +374,70 @@ class TestPdfProxyAuthenticated:
         ):
             from server import app
 
-            client = TestClient(app)
+            client = TestClient(app, headers=AUTH)
             resp = client.get("/api/pdf/file123")
 
         assert resp.status_code == 200
         creds.refresh.assert_called_once()
+
+
+# ── App auth token ──
+
+
+class TestAuthToken:
+    """Auth on /api/pdf — Bearer header or ?token= query param; fail closed."""
+
+    def _proxy_mocks(self):
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.headers = {"content-type": "application/pdf"}
+        mock_response.content = b"%PDF-1.4 fake"
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(return_value=mock_response)
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+        return (
+            patch("server._credentials", None),
+            patch("server.httpx.AsyncClient", return_value=mock_client),
+        )
+
+    def test_missing_token_rejected(self):
+        from server import app
+
+        resp = TestClient(app).get("/api/pdf/some_id")
+        assert resp.status_code == 401
+
+    def test_wrong_token_rejected(self):
+        from server import app
+
+        resp = TestClient(app, headers={"Authorization": "Bearer wrong"}).get("/api/pdf/some_id")
+        assert resp.status_code == 401
+
+    def test_query_param_token_accepted(self):
+        no_creds, client_patch = self._proxy_mocks()
+        with no_creds, client_patch:
+            from server import app
+
+            resp = TestClient(app).get(f"/api/pdf/some_id?token={TEST_TOKEN}")
+        assert resp.status_code == 200
+
+    def test_unconfigured_token_fails_closed(self, monkeypatch):
+        monkeypatch.delenv("SHEET_MUSIC_TOKEN")
+        mock_path = MagicMock()
+        mock_path.exists.return_value = False
+        with patch("server.TOKEN_PATH", mock_path):
+            from server import app
+
+            resp = TestClient(app).get("/api/pdf/some_id")
+        assert resp.status_code == 503
+
+    def test_catalog_stays_open(self, sample_catalog):
+        """The catalog (song index) is intentionally unauthenticated."""
+        mock_path = MagicMock()
+        mock_path.exists.return_value = True
+        mock_path.read_text.return_value = json.dumps(sample_catalog)
+        with patch("server.CATALOG_PATH", mock_path):
+            from server import app
+
+            resp = TestClient(app).get("/api/catalog")
+        assert resp.status_code == 200

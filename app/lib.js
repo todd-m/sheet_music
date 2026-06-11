@@ -11,6 +11,35 @@ export function escapeRegex(s) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+// ── App auth token (shared secret for the protected PDF endpoints) ──
+
+export const TOKEN_STORAGE_KEY = 'sheet-music-token';
+
+export function getStoredToken(storage = localStorage) {
+  return storage.getItem(TOKEN_STORAGE_KEY) || '';
+}
+
+export function storeToken(token, storage = localStorage) {
+  storage.setItem(TOKEN_STORAGE_KEY, token);
+}
+
+export function clearToken(storage = localStorage) {
+  storage.removeItem(TOKEN_STORAGE_KEY);
+}
+
+/**
+ * Return the stored token, or ask for one via promptFn (e.g. window.prompt)
+ * and persist it. Returns '' if the user cancels the prompt.
+ */
+export function ensureToken(promptFn, storage = localStorage) {
+  let token = getStoredToken(storage);
+  if (!token) {
+    token = (promptFn() || '').trim();
+    if (token) storeToken(token, storage);
+  }
+  return token;
+}
+
 export function highlightMatch(title, query) {
   if (!query.trim()) return escapeHtml(title);
   const terms = query.toLowerCase().split(/\s+/).filter(Boolean);

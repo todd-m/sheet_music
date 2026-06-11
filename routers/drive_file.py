@@ -7,11 +7,13 @@ server module) to keep extraction low-friction.
 """
 
 import io
+import os
+import secrets
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
-from google.auth.transport.requests import Request
+from google.auth.transport.requests import Request as GoogleAuthRequest
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
@@ -28,7 +30,36 @@ SERVICE_ACCOUNT_KEY_PATH = Path(__file__).resolve().parent.parent / "credentials
 SCOPES = ["https://www.googleapis.com/auth/drive.readonly"]
 CHUNK_SIZE = 8 * 1024 * 1024  # 8 MB per request to Drive
 
+# Duplicated from server.py on purpose — this module stays self-contained so
+# it can be extracted into its own service (see module docstring).
+TOKEN_PATH = Path(__file__).resolve().parent.parent / "token.txt"
+
 router = APIRouter()
+
+
+def _load_app_token() -> str | None:
+    """Shared app token from the SHEET_MUSIC_TOKEN env var or gitignored token.txt."""
+    token = os.environ.get("SHEET_MUSIC_TOKEN", "").strip()
+    if token:
+        return token
+    if TOKEN_PATH.exists():
+        return TOKEN_PATH.read_text().strip() or None
+    return None
+
+
+def require_token(request: Request, token: str | None = None) -> None:
+    """Require the shared app token (Bearer header or ?token=); fail closed."""
+    expected = _load_app_token()
+    if not expected:
+        raise HTTPException(
+            503, "Auth token not configured — set SHEET_MUSIC_TOKEN or create token.txt"
+        )
+    supplied = token or ""
+    auth_header = request.headers.get("authorization", "")
+    if auth_header.lower().startswith("bearer "):
+        supplied = auth_header[7:].strip()
+    if not supplied or not secrets.compare_digest(supplied, expected):
+        raise HTTPException(401, "Invalid or missing auth token")
 
 
 def _build_drive_service():
@@ -36,7 +67,7 @@ def _build_drive_service():
         str(SERVICE_ACCOUNT_KEY_PATH), scopes=SCOPES
     )
     if not creds.valid:
-        creds.refresh(Request())
+        creds.refresh(GoogleAuthRequest())
     return build("drive", "v3", credentials=creds)
 
 
@@ -70,8 +101,7 @@ def _resolve_file(service) -> dict:
     return files[0]
 
 
-# TODO: add auth
-@router.get("/drive/file")
+@router.get("/drive/file", dependencies=[Depends(require_token)])
 def download_drive_file():
     if not SERVICE_ACCOUNT_KEY_PATH.exists():
         raise HTTPException(503, "Service account credentials not configured")

@@ -6,6 +6,10 @@ import pytest
 from fastapi.testclient import TestClient
 from googleapiclient.errors import HttpError
 
+from .conftest import TEST_TOKEN
+
+AUTH = {"Authorization": f"Bearer {TEST_TOKEN}"}
+
 
 def _make_http_error(status: int) -> HttpError:
     resp = MagicMock()
@@ -67,7 +71,7 @@ class TestDriveFileEndpoint:
         ):
             from server import app
 
-            resp = TestClient(app).get("/drive/file")
+            resp = TestClient(app, headers=AUTH).get("/drive/file")
 
         assert resp.status_code == 200
         assert resp.content == fake_zip
@@ -87,7 +91,7 @@ class TestDriveFileEndpoint:
         ):
             from server import app
 
-            resp = TestClient(app).get("/drive/file")
+            resp = TestClient(app, headers=AUTH).get("/drive/file")
 
         assert "attachment" in resp.headers["content-disposition"]
         assert 'filename="hot dog stand.zip"' in resp.headers["content-disposition"]
@@ -97,7 +101,7 @@ class TestDriveFileEndpoint:
         with _patch_key_exists(exists=False):
             from server import app
 
-            resp = TestClient(app).get("/drive/file")
+            resp = TestClient(app, headers=AUTH).get("/drive/file")
 
         assert resp.status_code == 503
 
@@ -112,7 +116,7 @@ class TestDriveFileEndpoint:
         ):
             from server import app
 
-            resp = TestClient(app).get("/drive/file")
+            resp = TestClient(app, headers=AUTH).get("/drive/file")
 
         assert resp.status_code == 404
         assert "shared with the service account" in resp.json()["detail"]
@@ -128,7 +132,7 @@ class TestDriveFileEndpoint:
         ):
             from server import app
 
-            resp = TestClient(app).get("/drive/file")
+            resp = TestClient(app, headers=AUTH).get("/drive/file")
 
         assert resp.status_code == 502
 
@@ -148,7 +152,7 @@ class TestDriveFileEndpoint:
         ):
             from server import app
 
-            resp = TestClient(app).get("/drive/file")
+            resp = TestClient(app, headers=AUTH).get("/drive/file")
 
         assert resp.status_code == 200
         assert resp.content == chunk1 + chunk2
@@ -167,7 +171,7 @@ class TestDriveFileEndpoint:
         ):
             from server import app
 
-            TestClient(app).get("/drive/file")
+            TestClient(app, headers=AUTH).get("/drive/file")
 
         service.files.return_value.get_media.assert_called_once_with(fileId="the_real_id_456")
 
@@ -195,7 +199,7 @@ class TestDriveFileEndpoint:
         ):
             from server import app
 
-            TestClient(app).get("/drive/file")
+            TestClient(app, headers=AUTH).get("/drive/file")
 
         assert "folder_abc" in captured["q"]
         assert "in parents" in captured["q"]
@@ -219,4 +223,47 @@ class TestDriveFileEndpoint:
             # The HttpError surfaces mid-stream, after headers are sent; starlette
             # converts the resulting HTTPException into this RuntimeError.
             with pytest.raises(RuntimeError, match="response already started"):
-                TestClient(app).get("/drive/file")
+                TestClient(app, headers=AUTH).get("/drive/file")
+
+
+class TestDriveFileAuth:
+    """Auth on /drive/file — Bearer header or ?token= query param; fail closed."""
+
+    def test_missing_token_rejected(self):
+        with _patch_key_exists():
+            from server import app
+
+            resp = TestClient(app).get("/drive/file")
+        assert resp.status_code == 401
+
+    def test_wrong_token_rejected(self):
+        with _patch_key_exists():
+            from server import app
+
+            resp = TestClient(app, headers={"Authorization": "Bearer nope"}).get("/drive/file")
+        assert resp.status_code == 401
+
+    def test_query_param_token_accepted(self):
+        service = _make_service()
+        with (
+            _patch_key_exists(),
+            patch("routers.drive_file._build_drive_service", return_value=service),
+            patch(
+                "routers.drive_file.MediaIoBaseDownload",
+                side_effect=_make_downloader([b"zip-bytes"]),
+            ),
+        ):
+            from server import app
+
+            resp = TestClient(app).get(f"/drive/file?token={TEST_TOKEN}")
+        assert resp.status_code == 200
+
+    def test_unconfigured_token_fails_closed(self, monkeypatch):
+        monkeypatch.delenv("SHEET_MUSIC_TOKEN")
+        mock_path = MagicMock()
+        mock_path.exists.return_value = False
+        with patch("routers.drive_file.TOKEN_PATH", mock_path), _patch_key_exists():
+            from server import app
+
+            resp = TestClient(app).get("/drive/file")
+        assert resp.status_code == 503
